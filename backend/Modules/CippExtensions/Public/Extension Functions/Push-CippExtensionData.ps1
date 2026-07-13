@@ -14,6 +14,12 @@ function Push-CippExtensionData {
                 Invoke-HuduExtensionSync -Configuration $Config -TenantFilter $TenantFilter
             }
         }
+        'HaloPSA' {
+            if ($Config.HaloPSA.Enabled) {
+                Write-Host 'Performing HaloPSA Extension Sync...'
+                Invoke-HaloPSAExtensionSync -Configuration $Config -TenantFilter $TenantFilter
+            }
+        }
         'CustomData' {
             Write-Host 'Perfoming Custom Data Extension Sync...'
             Invoke-CustomDataSync -TenantFilter $TenantFilter

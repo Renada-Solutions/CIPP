@@ -42,6 +42,13 @@ Function Invoke-ExecExtensionMapping {
           'Outcomes'    = $Outcomes
         }
       }
+      'HaloPSAClientFields' {
+        $ClientFields = @(Get-HaloClientField)
+        $Result = @{
+          'ClientFields'   = $ClientFields
+          'IncludeOptions' = @(@([PSCustomObject]@{ name = '*All Fields'; value = 'AllFields' }) + $ClientFields)
+        }
+      }
       'PWPushFields' {
         $Accounts = Get-PwPushAccount
         $Result = @{
@@ -59,6 +66,7 @@ Function Invoke-ExecExtensionMapping {
         }
         'HaloPSA' {
           $Result = Set-HaloMapping -CIPPMapping $Table -APIName $APIName -Request $Request
+          Register-CIPPExtensionScheduledTasks
         }
         'NinjaOne' {
           $Result = Set-NinjaOneOrgMapping -CIPPMapping $Table -APIName $APIName -Request $Request

@@ -84,6 +84,16 @@ Function Invoke-ExecExtensionSync {
             Register-CIPPExtensionScheduledTasks -Reschedule -Extensions 'Hudu'
             $Results = [pscustomobject]@{'Results' = 'Extension sync tasks have been rescheduled and will start within 15 minutes' }
         }
+        'HaloPSA' {
+            $Table = Get-CIPPTable -TableName Extensionsconfig
+            $Configuration = ((Get-CIPPAzDataTableEntity @Table).config | ConvertFrom-Json).HaloPSA
+            if ($Configuration.SyncClientFields -eq $true) {
+                Register-CIPPExtensionScheduledTasks -Reschedule -Extensions 'HaloPSA'
+                $Results = [pscustomobject]@{'Results' = 'Extension sync tasks have been rescheduled and will start within 15 minutes' }
+            } else {
+                $Results = [pscustomobject]@{'Results' = 'HaloPSA client field sync is not enabled. Enable Sync Client Custom Fields in the integration settings first.' }
+            }
+        }
 
     }
 

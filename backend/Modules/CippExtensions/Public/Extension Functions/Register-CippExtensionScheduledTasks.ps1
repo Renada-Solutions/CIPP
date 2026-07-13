@@ -2,7 +2,7 @@ function Register-CIPPExtensionScheduledTasks {
     param(
         [switch]$Reschedule,
         [int64]$NextSync = (([datetime]::UtcNow.AddMinutes(30)) - (Get-Date '1/1/1970')).TotalSeconds,
-        [string[]]$Extensions = @('Hudu', 'NinjaOne', 'CustomData', 'Sherweb')
+        [string[]]$Extensions = @('Hudu', 'NinjaOne', 'CustomData', 'Sherweb', 'HaloPSA')
     )
 
     # get extension configuration and mappings table
@@ -29,7 +29,13 @@ function Register-CIPPExtensionScheduledTasks {
     $MappedTenants = [System.Collections.Generic.List[string]]::new()
     foreach ($Extension in $Extensions) {
         $ExtensionConfig = $Config.$Extension
-        if ($ExtensionConfig.Enabled -eq $true -or $Extension -eq 'CustomData') {
+        # HaloPSA's only scheduled work is the client field sync, so its toggle also gates task creation
+        $ExtensionSyncEnabled = if ($Extension -eq 'HaloPSA') {
+            $ExtensionConfig.Enabled -eq $true -and $ExtensionConfig.SyncClientFields -eq $true
+        } else {
+            $ExtensionConfig.Enabled -eq $true
+        }
+        if ($ExtensionSyncEnabled -or $Extension -eq 'CustomData') {
             if ($Extension -eq 'Sherweb') {
                 # Sherweb migration tasks - schedule per mapped tenant
                 $SherwebMappings = Get-CIPPAzDataTableEntity @MappingsTable -Filter "PartitionKey eq 'SherwebMapping'"
@@ -86,7 +92,9 @@ function Register-CIPPExtensionScheduledTasks {
                     continue
                 }
             } else {
-                $Mappings = Get-CIPPAzDataTableEntity @MappingsTable -Filter "PartitionKey eq '$($Extension)Mapping'"
+                # HaloPSA's tenant mappings predate the '<Extension>Mapping' convention and live under 'HaloMapping'
+                $MappingPartition = if ($Extension -eq 'HaloPSA') { 'HaloMapping' } else { "$($Extension)Mapping" }
+                $Mappings = Get-CIPPAzDataTableEntity @MappingsTable -Filter "PartitionKey eq '$MappingPartition'"
                 $FieldMapping = Get-CIPPAzDataTableEntity @MappingsTable -Filter "PartitionKey eq '$($Extension)FieldMapping'"
             }
             $FieldSync = @{}
@@ -165,7 +173,9 @@ function Register-CIPPExtensionScheduledTasks {
         }
     }
     foreach ($Task in $PushTasks) {
-        if ($Task.Tenant -notin $MappedTenants) {
+        # only touch tasks belonging to the extensions processed this run - a single-extension
+        # call (e.g. Force Sync) must not delete other extensions' sync tasks
+        if ($Task.SyncType -in $Extensions -and $Task.Tenant -notin $MappedTenants) {
             Write-Information "Tenant Removed: Cleaning up scheduled task $($Task.Name) for tenant $($Task.TenantFilter)"
             $Entity = $Task | Select-Object -Property PartitionKey, RowKey
             Remove-AzDataTableEntity -Force @ScheduledTasksTable -Entity $Entity
