@@ -90,6 +90,7 @@ export const CippAutoComplete = React.forwardRef((props, ref) => {
     renderGroup,
     customAction,
     handleHomeEndKeys = false,
+    exclusiveValues = [],
     ...other
   } = props
 
@@ -393,14 +394,19 @@ export const CippAutoComplete = React.forwardRef((props, ref) => {
         size="small"
         defaultValue={
           Array.isArray(defaultValue)
-            ? defaultValue.map((item) =>
-                typeof item === 'string' ? lookupOptionByValue(item) : item
-              )
-            : typeof defaultValue === 'object' && multiple
-              ? [defaultValue]
-              : typeof defaultValue === 'string'
-                ? lookupOptionByValue(defaultValue)
-                : defaultValue
+            ? defaultValue
+                .filter((item) => item !== null && item !== undefined)
+                .map((item) => (typeof item === 'string' ? lookupOptionByValue(item) : item))
+            : // typeof null === 'object': wrapping a cleared (null) value renders an empty chip,
+              // and passing null through crashes MUI's multiple mode, which requires an array -
+              // undefined lets MUI apply its own default ([] for multiple, null for single)
+              defaultValue === null || defaultValue === undefined
+              ? undefined
+              : typeof defaultValue === 'object' && multiple
+                ? [defaultValue]
+                : typeof defaultValue === 'string'
+                  ? lookupOptionByValue(defaultValue)
+                  : defaultValue
         }
         name={name}
         onChange={(event, newValue) => {
@@ -431,6 +437,16 @@ export const CippAutoComplete = React.forwardRef((props, ref) => {
                 item.value !== 'error' &&
                 item.value !== -1
             )
+            // exclusive options (e.g. an "*All ..." entry) cannot be combined with others:
+            // picking one clears the rest, picking anything else clears it
+            if (exclusiveValues?.length > 0 && newValue.length > 1) {
+              const added = newValue[newValue.length - 1]
+              if (exclusiveValues.includes(added?.value)) {
+                newValue = [added]
+              } else {
+                newValue = newValue.filter((item) => !exclusiveValues.includes(item?.value))
+              }
+            }
           } else {
             if (newValue?.manual || !newValue?.label) {
               newValue = {

@@ -268,7 +268,7 @@
     "type": "HaloPSA",
     "cat": "Ticketing",
     "logo": "/assets/integrations/halo.png",
-    "forceSyncButton": false,
+    "forceSyncButton": true,
     "description": "Enable the HaloPSA integration to send alerts to your ticketing system.",
     "helpText": "This integration allows you to send alerts to your ticketing system.",
     "links": [
@@ -422,6 +422,74 @@
           "compareType": "is",
           "compareValue": true,
           "action": "disable"
+        }
+      },
+      {
+        "type": "switch",
+        "name": "HaloPSA.SyncClientFields",
+        "label": "Sync Client-Level Custom Fields",
+        "helperText": "Daily sync of each mapped tenant's HaloPSA client-level Custom Fields into CIPP as tenant custom variables named %halo_<field>%. *Excludes Custom Field Tables.",
+        "condition": {
+          "field": "HaloPSA.Enabled",
+          "compareType": "is",
+          "compareValue": true,
+          "action": "disable"
+        }
+      },
+      {
+        "type": "autoComplete",
+        "name": "HaloPSA.SyncIncludeFields",
+        "label": "Custom Fields to Sync",
+        "helperText": "If empty, nothing is synced.",
+        "placeholder": "Select custom fields or type a name and press Enter",
+        "noOptionsText": "No custom fields found in HaloPSA - type a name and press Enter to add it",
+        "multiple": true,
+        "creatable": true,
+        "exclusiveValues": ["AllFields"],
+        "api": {
+          "url": "/api/ExecExtensionMapping",
+          "data": {
+            "List": "HaloPSAClientFields"
+          },
+          "queryKey": "HaloClientFieldsInclude",
+          "dataKey": "IncludeOptions",
+          "labelField": "name",
+          "valueField": "value",
+          "showRefresh": true
+        },
+        "fullRow": true,
+        "condition": {
+          "field": "HaloPSA.SyncClientFields",
+          "compareType": "is",
+          "compareValue": true,
+          "action": "hide"
+        }
+      },
+      {
+        "type": "autoComplete",
+        "name": "HaloPSA.SyncExcludeFields",
+        "label": "Custom Fields Excluded from Sync",
+        "placeholder": "Select custom fields or type a name and press Enter",
+        "noOptionsText": "No custom fields found in HaloPSA - type a name and press Enter to add it",
+        "multiple": true,
+        "creatable": true,
+        "api": {
+          "url": "/api/ExecExtensionMapping",
+          "data": {
+            "List": "HaloPSAClientFields"
+          },
+          "queryKey": "HaloClientFields",
+          "dataKey": "ClientFields",
+          "labelField": "name",
+          "valueField": "value",
+          "showRefresh": true
+        },
+        "fullRow": true,
+        "condition": {
+          "field": "HaloPSA.SyncIncludeFields",
+          "compareType": "valueEq",
+          "compareValue": "AllFields",
+          "action": "hide"
         }
       }
     ],
