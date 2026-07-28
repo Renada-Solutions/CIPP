@@ -26,6 +26,17 @@ const CippAddEditUser = (props) => {
   const router = useRouter()
   const { userId } = router.query
 
+  // Warn (without blocking) when a selected license has no projected seats left once
+  // pending scheduled tasks are counted. ProjectedAvailable is computed by the backend.
+  const selectedLicenses = useWatch({ control: formControl.control, name: 'licenses' })
+  const licensesWithShortfall = useMemo(
+    () =>
+      Array.isArray(selectedLicenses)
+        ? selectedLicenses.filter((l) => Number(l?.addedFields?.ProjectedAvailable ?? 1) <= 0)
+        : [],
+    [selectedLicenses]
+  )
+
   // Get user default templates (only in add mode)
   const userTemplates = ApiGetCall({
     url: `/api/ListNewUserDefaults?TenantFilter=${tenantDomain}`,
@@ -340,14 +351,8 @@ const CippAddEditUser = (props) => {
       typeof template.usageLocation === 'string'
         ? template.usageLocation
         : template.usageLocation?.value
-    const country = usageLocationCode
-      ? countryList.find((c) => c.Code === usageLocationCode)
-      : null
-    applyField(
-      'usageLocation',
-      country ? { label: country.Name, value: country.Code } : null,
-      null
-    )
+    const country = usageLocationCode ? countryList.find((c) => c.Code === usageLocationCode) : null
+    applyField('usageLocation', country ? { label: country.Name, value: country.Code } : null, null)
 
     applyField('jobTitle', template.jobTitle)
     applyField('streetAddress', template.streetAddress)
@@ -365,11 +370,7 @@ const CippAddEditUser = (props) => {
     applyField('businessPhones', templateBusinessPhone ? [templateBusinessPhone] : [], [])
 
     // Licenses - match the format expected by CippFormLicenseSelector
-    applyField(
-      'licenses',
-      Array.isArray(template.licenses) ? template.licenses : [],
-      []
-    )
+    applyField('licenses', Array.isArray(template.licenses) ? template.licenses : [], [])
 
     // Groups from template
     const templateGroups = template.addToGroups || template.groupMemberships
@@ -632,6 +633,16 @@ const CippAddEditUser = (props) => {
           showRefresh={true}
         />
       </Grid>
+      {formType === 'add' && licensesWithShortfall.length > 0 && (
+        <Grid size={{ xs: 12 }}>
+          <Alert severity="warning">
+            Projected license shortage for {licensesWithShortfall.map((l) => l.label).join(', ')}:
+            all available seats are in use or reserved by pending scheduled tasks. You can still
+            continue - seats may free up in time. When scheduling this creation, you can choose
+            below how a shortfall should be handled at run time.
+          </Alert>
+        </Grid>
+      )}
       {integrationSettings?.data?.Sherweb?.Enabled === true && (
         <>
           <CippFormCondition
@@ -986,9 +997,58 @@ const CippAddEditUser = (props) => {
             compareValue={true}
           >
             <Grid size={{ xs: 12 }}>
-              <label>{formType === 'add' ? 'Scheduled creation Date' : 'Scheduled edit date'}</label>
-              <CippFormComponent type="datePicker" name="Scheduled.date" formControl={formControl} />
+              <label>
+                {formType === 'add' ? 'Scheduled creation Date' : 'Scheduled edit date'}
+              </label>
+              <CippFormComponent
+                type="datePicker"
+                name="Scheduled.date"
+                formControl={formControl}
+              />
             </Grid>
+            {formType === 'add' && (
+              <CippFormCondition formControl={formControl} field="licenses" compareType="hasValue">
+                <Grid size={{ xs: 12 }}>
+                  <CippFormComponent
+                    type="autoComplete"
+                    label="If no license seat is available when this task runs"
+                    name="licenseShortfallAction"
+                    multiple={false}
+                    creatable={false}
+                    options={[
+                      {
+                        label: 'Create the user and report the license failure (default)',
+                        value: 'legacy',
+                      },
+                      {
+                        label: 'Defer the creation until a seat is available',
+                        value: 'defer',
+                      },
+                      {
+                        label:
+                          'Create the user without a license and retry assignment automatically',
+                        value: 'createAndRetry',
+                      },
+                    ]}
+                    formControl={formControl}
+                  />
+                </Grid>
+                <CippFormCondition
+                  formControl={formControl}
+                  field="licenseShortfallAction"
+                  compareType="valueEq"
+                  compareValue="defer"
+                >
+                  <Grid size={{ xs: 12 }}>
+                    <Alert severity="info">
+                      Nothing is created until a seat is free: the task rechecks every 12 hours for
+                      up to 7 days after the scheduled date, then fails with an alert. Earlier
+                      scheduled creations get priority for the last available seats.
+                    </Alert>
+                  </Grid>
+                </CippFormCondition>
+              </CippFormCondition>
+            )}
             <Grid size={{ xs: 12 }}>
               <CippFormComponent
                 type="switch"

@@ -384,6 +384,11 @@
     "recommendedRunInterval": "7d"
   },
   {
+    "name": "ScheduledLicenseShortfall",
+    "label": "Alert on scheduled user creations exceeding available licenses",
+    "recommendedRunInterval": "1d"
+  },
+  {
     "name": "EntraLicenseUtilization",
     "label": "Alert on Entra ID P1/P2 license over-utilization",
     "recommendedRunInterval": "7d",

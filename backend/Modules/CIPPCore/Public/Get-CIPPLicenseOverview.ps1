@@ -119,6 +119,15 @@ function Get-CIPPLicenseOverview {
             $GroupsBySku[$LicenseSkuId].Add($GroupInfo)
         }
     }
+    # Pending license claims derived from scheduled tasks (additive visibility fields;
+    # a table hiccup must never break the overview itself)
+    try {
+        $LicenseClaims = @(Get-CIPPLicenseReservation -TenantFilter $TenantFilter)
+    } catch {
+        Write-Warning "Failed to get license reservations: $($_.Exception.Message)"
+        $LicenseClaims = @()
+    }
+
     $GraphRequest = foreach ($singleReq in $RawGraphRequest) {
         $skuId = $singleReq.Licenses
         foreach ($sku in $skuId) {
@@ -158,19 +167,22 @@ function Get-CIPPLicenseOverview {
                 }
             }
             $SkuKey = ([string]$sku.skuId).ToLowerInvariant()
+            $ReservedUnits = @($LicenseClaims | Where-Object { $_.SkuId -eq $SkuKey }).Count
             [pscustomobject]@{
-                Tenant         = [string]$singleReq.Tenant
-                License        = [string]$PrettyName
-                CountUsed      = [string]"$($sku.consumedUnits)"
-                CountAvailable = [string]$sku.prepaidUnits.enabled - $sku.consumedUnits
-                TotalLicenses  = [string]"$($sku.prepaidUnits.enabled)"
-                skuId          = [string]$sku.skuId
-                skuPartNumber  = [string]$PrettyName
-                availableUnits = [string]$sku.prepaidUnits.enabled - $sku.consumedUnits
-                TermInfo       = @($TermInfo)
-                AssignedUsers  = ($UsersBySku.ContainsKey($SkuKey) ? @(($UsersBySku[$SkuKey])) : $null)
-                AssignedGroups = ($GroupsBySku.ContainsKey($SkuKey) ? @(($GroupsBySku[$SkuKey])) : $null)
-                ServicePlans   = $sku.servicePlans
+                Tenant             = [string]$singleReq.Tenant
+                License            = [string]$PrettyName
+                CountUsed          = [string]"$($sku.consumedUnits)"
+                CountAvailable     = [string]$sku.prepaidUnits.enabled - $sku.consumedUnits
+                TotalLicenses      = [string]"$($sku.prepaidUnits.enabled)"
+                skuId              = [string]$sku.skuId
+                skuPartNumber      = [string]$PrettyName
+                availableUnits     = [string]$sku.prepaidUnits.enabled - $sku.consumedUnits
+                ReservedUnits      = [string]$ReservedUnits
+                ProjectedAvailable = [string]($sku.prepaidUnits.enabled - $sku.consumedUnits - $ReservedUnits)
+                TermInfo           = @($TermInfo)
+                AssignedUsers      = ($UsersBySku.ContainsKey($SkuKey) ? @(($UsersBySku[$SkuKey])) : $null)
+                AssignedGroups     = ($GroupsBySku.ContainsKey($SkuKey) ? @(($GroupsBySku[$SkuKey])) : $null)
+                ServicePlans       = $sku.servicePlans
             }
         }
     }

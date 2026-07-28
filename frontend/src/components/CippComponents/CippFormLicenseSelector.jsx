@@ -22,11 +22,21 @@ export const CippFormLicenseSelector = ({
       multiple={multiple}
       creatable={false}
       api={{
-        addedField: addedField,
+        addedField: {
+          ReservedUnits: 'ReservedUnits',
+          ProjectedAvailable: 'ProjectedAvailable',
+          ...(addedField ?? {}),
+        },
         tenantFilter: userSettingsDefaults.currentTenant ?? undefined,
         url: '/api/ListLicenses',
         labelField: (option) =>
-          `${getCippLicenseTranslation([option])} (${option?.availableUnits} available)`,
+          `${getCippLicenseTranslation([option])} (${option?.availableUnits} available)${
+            Number(option?.ReservedUnits) > 0 ? ` · ${option.ReservedUnits} reserved` : ''
+          }`,
+        descriptionField: (option) =>
+          Number(option?.ReservedUnits) > 0
+            ? `${option.ReservedUnits} seat(s) reserved by pending scheduled tasks · projected available: ${option.ProjectedAvailable}`
+            : undefined,
         valueField: 'skuId',
         queryKey: `ListLicenses-${userSettingsDefaults?.currentTenant ?? undefined}`,
         data: {

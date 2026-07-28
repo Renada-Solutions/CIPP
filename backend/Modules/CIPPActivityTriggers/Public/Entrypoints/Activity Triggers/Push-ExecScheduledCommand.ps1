@@ -265,10 +265,69 @@ function Push-ExecScheduledCommand {
                 Write-Information "Starting task: $($Item.Command) for tenant: $Tenant with parameters: $($commandParameters | ConvertTo-Json -Depth 10)"
                 $results = & $Item.Command @commandParameters
             } catch {
-                $results = "Task Failed: $($_.Exception.Message)"
-                $State = 'Failed'
+                # A 'DeferTask:' throw asks the scheduler to try again later instead of failing -
+                # used by license-aware user creation when no seat is free yet. Fixed ladder:
+                # retry every 12 hours until 7 days after the original scheduled time, then
+                # hard-fail. Only one-time tasks defer; recurring tasks retry on their own schedule.
+                $IsOneTimeTask = (!$task.Recurrence -or $task.Recurrence -eq '0')
+                if ($_.Exception.Message -like 'DeferTask:*' -and $IsOneTimeTask -and !$IsMultiTenantExecution) {
+                    $DeferMessage = $_.Exception.Message -replace '^DeferTask:\s*', ''
+                    $DeferRetrySeconds = 43200
+                    $DeferWindowSeconds = 604800
+                    $AdditionalProps = @{}
+                    if (![string]::IsNullOrWhiteSpace($CurrentTask.AdditionalProperties)) {
+                        try {
+                            $AdditionalProps = $CurrentTask.AdditionalProperties | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+                        } catch {
+                            $AdditionalProps = @{}
+                        }
+                    }
+                    # Stamp the original schedule on the first deferral so the task keeps its
+                    # queue position (earliest scheduled date is first in line for a seat)
+                    $OriginalScheduledTime = [int64]($AdditionalProps.OriginalScheduledTime ?? $task.ScheduledTime)
+                    $DeferCount = [int]($AdditionalProps.DeferCount ?? 0) + 1
+                    $unixtimeNow = [int64](([datetime]::UtcNow) - (Get-Date '1/1/1970')).TotalSeconds
+                    if (($unixtimeNow - $OriginalScheduledTime) -lt $DeferWindowSeconds) {
+                        $AdditionalProps.OriginalScheduledTime = "$OriginalScheduledTime"
+                        $AdditionalProps.DeferCount = $DeferCount
+                        $DeferResults = "Deferred (attempt $DeferCount): $DeferMessage"
+                        $null = Update-AzDataTableEntity -Force @Table -Entity @{
+                            PartitionKey         = $task.PartitionKey
+                            RowKey               = $task.RowKey
+                            TaskState            = 'Planned'
+                            ScheduledTime        = "$($unixtimeNow + $DeferRetrySeconds)"
+                            Results              = "$DeferResults"
+                            AdditionalProperties = [string]([PSCustomObject]$AdditionalProps | ConvertTo-Json -Compress)
+                        }
+                        Write-LogMessage -API 'Scheduler_UserTasks' -tenant $Tenant -tenantid $TenantInfo.customerId -message "Deferred task $($task.Name): $DeferMessage" -sev Info
+                        # Alert once, on the first deferral, so the shortfall is noticed immediately
+                        if ($DeferCount -eq 1 -and -not [string]::IsNullOrWhiteSpace($task.PostExecution)) {
+                            Send-CIPPScheduledTaskAlert -Results @{ Results = $DeferResults } -TaskInfo $task -TenantFilter $Tenant -TaskType 'Scheduled Task'
+                        }
+                        Remove-Variable -Name ScheduledTaskId -Scope Script -ErrorAction SilentlyContinue
+                        return
+                    }
+                    $results = "Task Failed: The deferral window is exhausted after $DeferCount attempts. $DeferMessage"
+                    $State = 'Failed'
+                } else {
+                    $results = "Task Failed: $($_.Exception.Message)"
+                    $State = 'Failed'
+                }
             }
             Write-Information 'Ran the command. Processing results'
+        }
+
+        # Commands may return a structured result with CippTaskState = 'Failed' to signal a partial
+        # failure (e.g. user created but license assignment failed) while still returning their
+        # full results. Honor it so the task is not marked Completed. A CIPP-specific key is used
+        # (not the generic 'State') because many unrelated cmdlets already return their own 'State'
+        # property - this must never collide with those and misfire on an unrelated command.
+        if ($results -is [hashtable] -and $results['CippTaskState']) {
+            if ($results['CippTaskState'] -eq 'Failed') { $State = 'Failed' }
+            $results.Remove('CippTaskState')
+        } elseif ($results -is [PSCustomObject] -and $null -ne $results.PSObject.Properties['CippTaskState']) {
+            if ($results.CippTaskState -eq 'Failed') { $State = 'Failed' }
+            $results = $results | Select-Object -Property * -ExcludeProperty CippTaskState
         }
 
         # Extract TaskAttachments from structured output before general result processing
@@ -326,6 +385,12 @@ function Push-ExecScheduledCommand {
     } catch {
         Write-Information "Failed to run task: $($_.Exception.Message)"
         $errorMessage = $_.Exception.Message
+        # Populate $results so PostExecution alerts fire below for this failure too - this catch
+        # covers any unhandled exception from the command or its result processing (for ANY
+        # scheduled command, not just user creation), and previously left $results unset, which
+        # silently skipped the "if ($Results -and ...)" alert check further down.
+        $results = "Task Failed: $errorMessage"
+        $TaskType = $TaskType ?? 'Scheduled Task'
         #if recurrence is just a number, add it in days.
         if ($task.Recurrence -match '^\d+$') {
             $task.Recurrence = $task.Recurrence + 'd'
@@ -402,12 +467,17 @@ function Push-ExecScheduledCommand {
             # The PostExecution function will aggregate all results and update the parent task
             Write-Information "Multi-tenant execution for tenant $Tenant - parent task state will be updated by PostExecution"
         } elseif ($task.Recurrence -eq '0' -or [string]::IsNullOrEmpty($task.Recurrence) -or $Trigger.ExecutionMode.value -eq 'once' -or $Trigger.ExecutionMode -eq 'once') {
-            Write-Information 'Recurrence empty or 0. Task is not recurring. Setting task state to completed.'
+            # Respect a failure state from the command: a failed one-time task must not read
+            # as Completed just because its error was captured in the results.
+            $FinalState = $State -eq 'Failed' ? 'Failed' : 'Completed'
+            Write-Information "Recurrence empty or 0. Task is not recurring. Setting task state to $FinalState."
             Update-AzDataTableEntity -Force @Table -Entity @{
                 PartitionKey = $task.PartitionKey
                 RowKey       = $task.RowKey
-                Results      = "$StoredResults"
-                TaskState    = 'Completed'
+                # $StoredResults is only ever assigned on the success path; when the outer catch
+                # fired, fall back to $errorMessage so the failure reason isn't blanked out
+                Results      = "$($StoredResults ?? $errorMessage)"
+                TaskState    = $FinalState
             }
         } else {
             #if recurrence is just a number, add it in days.
@@ -433,8 +503,10 @@ function Push-ExecScheduledCommand {
             Update-AzDataTableEntity -Force @Table -Entity @{
                 PartitionKey  = $task.PartitionKey
                 RowKey        = $task.RowKey
-                Results       = "$StoredResults"
-                TaskState     = 'Planned'
+                # See the one-time branch above: fall back to $errorMessage when the outer catch
+                # fired and $StoredResults was never assigned
+                Results       = "$($StoredResults ?? $errorMessage)"
+                TaskState     = $State -eq 'Failed' ? 'Failed - Planned' : 'Planned'
                 ScheduledTime = "$nextRunUnixTime"
             }
         }
@@ -443,7 +515,11 @@ function Push-ExecScheduledCommand {
         Write-Information $_.InvocationInfo.PositionMessage
     }
     if ($TaskType -ne 'Alert') {
-        Write-LogMessage -API 'Scheduler_UserTasks' -tenant $Tenant -tenantid $TenantInfo.customerId -message "Successfully executed task: $($task.Name)" -sev Info
+        if ($State -eq 'Failed') {
+            Write-LogMessage -API 'Scheduler_UserTasks' -tenant $Tenant -tenantid $TenantInfo.customerId -message "Executed task with failures: $($task.Name)" -sev Error
+        } else {
+            Write-LogMessage -API 'Scheduler_UserTasks' -tenant $Tenant -tenantid $TenantInfo.customerId -message "Successfully executed task: $($task.Name)" -sev Info
+        }
     }
     Remove-Variable -Name ScheduledTaskId -Scope Script -ErrorAction SilentlyContinue
     return 'Task Completed Successfully.'
