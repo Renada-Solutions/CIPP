@@ -39,12 +39,12 @@ function Push-ExecScheduledCommand {
     $CurrentTask = Get-AzDataTableEntity @Table -Filter "PartitionKey eq '$($task.PartitionKey)' and RowKey eq '$($task.RowKey)'"
     if (!$CurrentTask) {
         Write-Information "The task $($task.Name) for tenant $($task.Tenant) does not exist in the ScheduledTasks table. Exiting."
-        Remove-Variable -Name ScheduledTaskId -Scope Script -ErrorAction SilentlyContinue
+        Set-CippScheduledTaskContext -TaskId ''
         return
     }
     if ($CurrentTask.TaskState -eq 'Completed' -and !$IsMultiTenantTask) {
         Write-Information "The task $($task.Name) for tenant $($task.Tenant) is already completed. Skipping execution."
-        Remove-Variable -Name ScheduledTaskId -Scope Script -ErrorAction SilentlyContinue
+        Set-CippScheduledTaskContext -TaskId ''
         return
     }
     # Task should be 'Pending' (queued by orchestrator) or 'Running' (retry/recovery)
@@ -68,7 +68,7 @@ function Push-ExecScheduledCommand {
         # If executed within last 15 minutes, skip (likely a duplicate pickup)
         if ($timeSinceExecution -lt 900) {
             Write-Information "One-time task $($task.Name) for tenant $Tenant was recently executed ($timeSinceExecution seconds ago). Skipping to prevent duplicate execution."
-            Remove-Variable -Name ScheduledTaskId -Scope Script -ErrorAction SilentlyContinue
+            Set-CippScheduledTaskContext -TaskId ''
             return
         }
     }
@@ -114,7 +114,7 @@ function Push-ExecScheduledCommand {
                     TaskState     = 'Planned'
                     ScheduledTime = [string]$nextRunUnixTime
                 }
-                Remove-Variable -Name ScheduledTaskId -Scope Script -ErrorAction SilentlyContinue
+                Set-CippScheduledTaskContext -TaskId ''
                 return
             }
         }
@@ -142,11 +142,13 @@ function Push-ExecScheduledCommand {
                 RowKey       = $task.RowKey
                 Results      = "$Results"
                 TaskState    = $State
+                HasErrors    = $true
+                ErrorSummary = "$Results"
             }
         }
 
         Write-LogMessage -API 'Scheduler_UserTasks' -tenant $Tenant -tenantid $TenantInfo.customerId -message "Failed to execute task $($task.Name): The command $($Item.Command) does not exist." -sev Error
-        Remove-Variable -Name ScheduledTaskId -Scope Script -ErrorAction SilentlyContinue
+        Set-CippScheduledTaskContext -TaskId ''
         return
     }
 
@@ -160,9 +162,11 @@ function Push-ExecScheduledCommand {
                 RowKey       = $task.RowKey
                 Results      = "$Results"
                 TaskState    = $State
+                HasErrors    = $true
+                ErrorSummary = "$Results"
             }
         }
-        Remove-Variable -Name ScheduledTaskId -Scope Script -ErrorAction SilentlyContinue
+        Set-CippScheduledTaskContext -TaskId ''
         return
     }
     if ($Item.Command -in (Get-CIPPSchedulerBlockedCommands)) {
@@ -175,9 +179,11 @@ function Push-ExecScheduledCommand {
                 RowKey       = $task.RowKey
                 Results      = "$Results"
                 TaskState    = $State
+                HasErrors    = $true
+                ErrorSummary = "$Results"
             }
         }
-        Remove-Variable -Name ScheduledTaskId -Scope Script -ErrorAction SilentlyContinue
+        Set-CippScheduledTaskContext -TaskId ''
         return
     }
 
@@ -354,9 +360,12 @@ function Push-ExecScheduledCommand {
                 Results       = "$errorMessage"
                 ScheduledTime = "$nextRunUnixTime"
                 TaskState     = $State
+                HasErrors     = $true
+                ErrorSummary  = "$errorMessage"
             }
         }
         Write-LogMessage -API 'Scheduler_UserTasks' -tenant $Tenant -tenantid $TenantInfo.customerId -message "Failed to execute task $($task.Name): $errorMessage" -sev Error -LogData (Get-CippExceptionData -Exception $_.Exception)
+        $TaskFailureLogged = $true
     }
 
     # For orchestrator-based commands, skip post-execution alerts as they will be handled by the orchestrator's post-execution function
@@ -374,6 +383,17 @@ function Push-ExecScheduledCommand {
         Send-CIPPScheduledTaskAlert @AlertParams
     }
 
+    # A task can finish without throwing while a step inside it failed - the clearest case being a user
+    # that is created successfully but never licensed because the tenant has no licences left. Those steps
+    # log at Error severity, so the errors collected against this task's context are what tell the two
+    # apart. Without this the row reads Completed and the failure only exists as text inside Results.
+    $TaskErrors = @(Get-CippScheduledTaskError)
+    $TaskHasErrors = $TaskErrors.Count -gt 0
+    $TaskErrorSummary = if ($TaskHasErrors) { $TaskErrors -join ' | ' } else { '' }
+    if ($TaskErrorSummary.Length -gt 4000) {
+        $TaskErrorSummary = $TaskErrorSummary.Substring(0, 4000)
+    }
+
     try {
         # For orchestrator-based commands, skip task state update as it will be handled by post-execution
         if ($Item.Command -in $OrchestratorBasedCommands) {
@@ -386,6 +406,8 @@ function Push-ExecScheduledCommand {
                         RowKey       = $task.RowKey
                         Results      = "$results"
                         TaskState    = 'Failed'
+                        HasErrors    = $true
+                        ErrorSummary = "$results"
                     }
                 } else {
                     # Update task state to 'Processing' to indicate orchestration is in progress
@@ -402,12 +424,17 @@ function Push-ExecScheduledCommand {
             # The PostExecution function will aggregate all results and update the parent task
             Write-Information "Multi-tenant execution for tenant $Tenant - parent task state will be updated by PostExecution"
         } elseif ($task.Recurrence -eq '0' -or [string]::IsNullOrEmpty($task.Recurrence) -or $Trigger.ExecutionMode.value -eq 'once' -or $Trigger.ExecutionMode -eq 'once') {
-            Write-Information 'Recurrence empty or 0. Task is not recurring. Setting task state to completed.'
+            # $State is set to 'Failed' when the command threw. Before, it was only honoured for
+            # orchestrator-based commands, so every other failing task was written as Completed.
+            $FinalState = if ($State -eq 'Failed') { 'Failed' } else { 'Completed' }
+            Write-Information "Recurrence empty or 0. Task is not recurring. Setting task state to $FinalState."
             Update-AzDataTableEntity -Force @Table -Entity @{
                 PartitionKey = $task.PartitionKey
                 RowKey       = $task.RowKey
                 Results      = "$StoredResults"
-                TaskState    = 'Completed'
+                TaskState    = $FinalState
+                HasErrors    = $TaskHasErrors
+                ErrorSummary = $TaskErrorSummary
             }
         } else {
             #if recurrence is just a number, add it in days.
@@ -429,22 +456,38 @@ function Push-ExecScheduledCommand {
             }
 
             $nextRunUnixTime = [int64]$task.ScheduledTime + [int64]$secondsToAdd
+            # A recurring task that failed still has to be rescheduled, so it goes to 'Failed - Planned'
+            # rather than 'Failed' - the orchestrator picks that state back up on the next cycle.
+            $FinalState = if ($State -eq 'Failed') { 'Failed - Planned' } else { 'Planned' }
             Write-Information "The job is recurring. It was scheduled for $($task.ScheduledTime). The next runtime should be $nextRunUnixTime"
             Update-AzDataTableEntity -Force @Table -Entity @{
                 PartitionKey  = $task.PartitionKey
                 RowKey        = $task.RowKey
                 Results       = "$StoredResults"
-                TaskState     = 'Planned'
+                TaskState     = $FinalState
                 ScheduledTime = "$nextRunUnixTime"
+                HasErrors     = $TaskHasErrors
+                ErrorSummary  = $TaskErrorSummary
             }
         }
     } catch {
         Write-Warning "Failed to update task state: $($_.Exception.Message)"
         Write-Information $_.InvocationInfo.PositionMessage
     }
-    if ($TaskType -ne 'Alert') {
-        Write-LogMessage -API 'Scheduler_UserTasks' -tenant $Tenant -tenantid $TenantInfo.customerId -message "Successfully executed task: $($task.Name)" -sev Info
+    if ($TaskType -ne 'Alert' -and -not $TaskFailureLogged) {
+        if ($State -eq 'Failed') {
+            # $StoredResults, not $results: by this point a thrown command's message has been wrapped
+            # into a hashtable by the result processing above, which interpolates as
+            # "System.Collections.Hashtable" and loses the error entirely.
+            Write-LogMessage -API 'Scheduler_UserTasks' -tenant $Tenant -tenantid $TenantInfo.customerId -message "Failed to execute task $($task.Name): $StoredResults" -sev Error
+        } elseif ($TaskHasErrors) {
+            # The task itself ran, but a step inside it failed. Logged as an error so it can raise a
+            # notification rather than being reported as a clean success.
+            Write-LogMessage -API 'Scheduler_UserTasks' -tenant $Tenant -tenantid $TenantInfo.customerId -message "Executed task $($task.Name) with errors: $TaskErrorSummary" -sev Error
+        } else {
+            Write-LogMessage -API 'Scheduler_UserTasks' -tenant $Tenant -tenantid $TenantInfo.customerId -message "Successfully executed task: $($task.Name)" -sev Info
+        }
     }
-    Remove-Variable -Name ScheduledTaskId -Scope Script -ErrorAction SilentlyContinue
+    Set-CippScheduledTaskContext -TaskId ''
     return 'Task Completed Successfully.'
 }
