@@ -144,6 +144,8 @@ function Push-ExecScheduledCommand {
                 TaskState    = $State
                 HasErrors    = $true
                 ErrorSummary = "$Results"
+                AtRisk       = $false
+                AtRiskReason = ''
             }
         }
 
@@ -164,6 +166,8 @@ function Push-ExecScheduledCommand {
                 TaskState    = $State
                 HasErrors    = $true
                 ErrorSummary = "$Results"
+                AtRisk       = $false
+                AtRiskReason = ''
             }
         }
         Set-CippScheduledTaskContext -TaskId ''
@@ -181,6 +185,8 @@ function Push-ExecScheduledCommand {
                 TaskState    = $State
                 HasErrors    = $true
                 ErrorSummary = "$Results"
+                AtRisk       = $false
+                AtRiskReason = ''
             }
         }
         Set-CippScheduledTaskContext -TaskId ''
@@ -362,6 +368,8 @@ function Push-ExecScheduledCommand {
                 TaskState     = $State
                 HasErrors     = $true
                 ErrorSummary  = "$errorMessage"
+                AtRisk        = $false
+                AtRiskReason  = ''
             }
         }
         Write-LogMessage -API 'Scheduler_UserTasks' -tenant $Tenant -tenantid $TenantInfo.customerId -message "Failed to execute task $($task.Name): $errorMessage" -sev Error -LogData (Get-CippExceptionData -Exception $_.Exception)
@@ -394,6 +402,10 @@ function Push-ExecScheduledCommand {
         $TaskErrorSummary = $TaskErrorSummary.Substring(0, 4000)
     }
 
+    # Every terminal write below also clears AtRisk: the preflight flag is a prediction about a run
+    # that has now happened, and nothing else ever re-examines a task that has left the Planned
+    # state - without this, a flagged task that ran would sit in the at-risk view forever.
+
     try {
         # For orchestrator-based commands, skip task state update as it will be handled by post-execution
         if ($Item.Command -in $OrchestratorBasedCommands) {
@@ -408,6 +420,8 @@ function Push-ExecScheduledCommand {
                         TaskState    = 'Failed'
                         HasErrors    = $true
                         ErrorSummary = "$results"
+                        AtRisk       = $false
+                        AtRiskReason = ''
                     }
                 } else {
                     # Update task state to 'Processing' to indicate orchestration is in progress
@@ -435,6 +449,8 @@ function Push-ExecScheduledCommand {
                 TaskState    = $FinalState
                 HasErrors    = $TaskHasErrors
                 ErrorSummary = $TaskErrorSummary
+                AtRisk       = $false
+                AtRiskReason = ''
             }
         } else {
             #if recurrence is just a number, add it in days.
@@ -468,6 +484,8 @@ function Push-ExecScheduledCommand {
                 ScheduledTime = "$nextRunUnixTime"
                 HasErrors     = $TaskHasErrors
                 ErrorSummary  = $TaskErrorSummary
+                AtRisk        = $false
+                AtRiskReason  = ''
             }
         }
     } catch {
