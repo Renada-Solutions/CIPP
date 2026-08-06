@@ -50,6 +50,13 @@ function New-CippExtAlert {
                         if ($Display) { $TicketParams.DisplayName = $Display }
                     }
 
+                    # Passed through so the ticket can be linked back to the alert items it covers.
+                    # Deliberately not gated on LinkTicketsToUsers - the link rows are inert unless
+                    # HaloPSA.CloseResolvedTickets is turned on.
+                    if ($Alert.AlertSource) {
+                        $TicketParams.AlertSource = $Alert.AlertSource
+                    }
+
                     New-HaloPSATicket @TicketParams
                 }
             }

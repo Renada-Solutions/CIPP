@@ -19,7 +19,7 @@ BeforeAll {
     function Send-CIPPAlert {
         param($Type, $Title, $HTMLContent, $JSONContent, $TenantFilter, $altEmail, $altWebhook,
             $APIName, $SchemaSource, $InvokingCommand, $Headers, $TableName, $RowKey,
-            $Attachments, $AffectedUser, [switch]$UseStandardizedSchema)
+            $Attachments, $AffectedUser, $AlertSource, [switch]$UseStandardizedSchema)
     }
     function Write-LogMessage { param($API, $tenant, $message, $sev, $LogData, $headers) }
 
@@ -70,12 +70,13 @@ Describe 'Send-CIPPScheduledTaskAlert - PSA snooze links' {
         }
 
         Mock -CommandName Send-CIPPAlert -MockWith {
-            param($Type, $Title, $HTMLContent, $JSONContent, $TenantFilter, $AffectedUser)
+            param($Type, $Title, $HTMLContent, $JSONContent, $TenantFilter, $AffectedUser, $AlertSource)
             $script:SentAlerts.Add([pscustomobject]@{
                     Type         = $Type
                     Title        = $Title
                     HTMLContent  = $HTMLContent
                     AffectedUser = $AffectedUser
+                    AlertSource  = $AlertSource
                 })
         }
     }
@@ -119,6 +120,20 @@ Describe 'Send-CIPPScheduledTaskAlert - PSA snooze links' {
             }
         }
 
+        It 'scopes the alert source to that ticket''s own rows' {
+            Send-CIPPScheduledTaskAlert -Results $script:Results -TaskInfo $script:TaskInfo -TenantFilter 'contoso.com' -TaskType 'Alert'
+
+            # One hash each, and different ones, so a per-user ticket can only be closed by its own
+            # user clearing rather than by anyone else's.
+            foreach ($Alert in $script:SentAlerts) {
+                $Alert.AlertSource | Should -Not -BeNullOrEmpty
+                $Alert.AlertSource.CmdletName | Should -Be 'Get-CIPPAlertNoCAConfig'
+                $Alert.AlertSource.TenantFilter | Should -Be 'contoso.com'
+                @($Alert.AlertSource.ContentHashes).Count | Should -Be 1
+            }
+            $script:SentAlerts[0].AlertSource.ContentHashes[0] | Should -Not -Be $script:SentAlerts[1].AlertSource.ContentHashes[0]
+        }
+
         It 'omits snooze buttons for non-alert task types' {
             Send-CIPPScheduledTaskAlert -Results $script:Results -TaskInfo $script:TaskInfo -TenantFilter 'contoso.com' -TaskType 'Scheduled Task'
 
@@ -140,6 +155,22 @@ Describe 'Send-CIPPScheduledTaskAlert - PSA snooze links' {
             $script:SentAlerts[0].HTMLContent | Should -Match 'user1@contoso.com'
             $script:SentAlerts[0].HTMLContent | Should -Match 'user2@contoso.com'
             $script:SentAlerts[0].HTMLContent | Should -Match 'Please review these accounts\.'
+        }
+
+        It 'covers every row in one alert source so the ticket only closes when all of them clear' {
+            $script:LinkTicketsToUsers = $false
+
+            Send-CIPPScheduledTaskAlert -Results $script:Results -TaskInfo $script:TaskInfo -TenantFilter 'contoso.com' -TaskType 'Alert'
+
+            @($script:SentAlerts[0].AlertSource.ContentHashes).Count | Should -Be 2
+        }
+
+        It 'sends no alert source for non-alert task types' {
+            $script:LinkTicketsToUsers = $false
+
+            Send-CIPPScheduledTaskAlert -Results $script:Results -TaskInfo $script:TaskInfo -TenantFilter 'contoso.com' -TaskType 'Scheduled Task'
+
+            $script:SentAlerts[0].AlertSource | Should -BeNullOrEmpty
         }
 
         It 'honours a per-task consolidated strategy over the global toggle' {

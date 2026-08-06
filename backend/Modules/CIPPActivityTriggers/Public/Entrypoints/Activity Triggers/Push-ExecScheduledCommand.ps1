@@ -254,6 +254,10 @@ function Push-ExecScheduledCommand {
     }
 
     try {
+        # Captured before the command runs so Resolve-CIPPAlertTickets can tell whether the
+        # AlertLastRun row was stamped by this run or by an earlier one.
+        $RunStartUtc = [datetime]::UtcNow
+
         if (-not $Trigger.ExecutePerResource) {
             try {
                 # For orchestrator-based commands, add TaskInfo to enable post-execution updates
@@ -286,6 +290,19 @@ function Push-ExecScheduledCommand {
             Write-Information 'This is an alert task. Processing results as alerts.'
             $results = @($results)
             $TaskType = 'Alert'
+
+            # Close back any PSA ticket whose items this run no longer reports. Runs regardless of
+            # whether the alert produced results - a cleared alert produces none, which is the whole
+            # point - and no-ops cheaply when the tenant has no linked tickets.
+            #
+            # Skipped when the alert threw: a failed run reports nothing for exactly the same reason
+            # a cleared one does, and closing every ticket for a tenant because Graph returned a 503
+            # is far worse than leaving them open until the next successful run.
+            if ($State -eq 'Failed') {
+                Write-Information "Alert $($Item.Command) failed for $Tenant - skipping ticket resolution so a failed run cannot close open tickets."
+            } else {
+                Resolve-CIPPAlertTickets -CmdletName $Item.Command -TenantFilter $Tenant -RunStartUtc $RunStartUtc
+            }
         } else {
             Write-Information 'This is a scheduled task. Processing results as scheduled task.'
             $TaskType = 'Scheduled Task'

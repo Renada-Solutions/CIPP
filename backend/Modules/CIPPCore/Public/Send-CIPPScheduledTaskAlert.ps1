@@ -126,6 +126,36 @@ function Send-CIPPScheduledTaskAlert {
         }
     }
 
+    function Get-AlertSourceContext {
+        <#
+            Describes which alert items a PSA ticket is about, so Resolve-CIPPAlertTickets can tell
+            later whether those specific items have stopped appearing. Hashes come from
+            Get-AlertContentHash - the same identity the snooze feature uses - so a row matches
+            itself across runs. Returns $null for anything that isn't a scripted alert with object
+            rows, which leaves the PSA call exactly as it was.
+        #>
+        param($Rows, [string]$CmdletName, [string]$Tenant, [string]$Type)
+
+        if ($Type -ne 'Alert' -or [string]::IsNullOrWhiteSpace($CmdletName)) { return $null }
+        $Items = @($Rows)
+        if ($Items.Count -eq 0 -or $Items[0] -is [string]) { return $null }
+
+        try {
+            $Hashes = foreach ($Item in $Items) { (Get-AlertContentHash -AlertItem $Item).ContentHash }
+            $Hashes = @($Hashes | Where-Object { $_ } | Select-Object -Unique)
+            if ($Hashes.Count -eq 0) { return $null }
+            return [pscustomobject]@{
+                CmdletName    = $CmdletName
+                TenantFilter  = $Tenant
+                ContentHashes = $Hashes
+            }
+        } catch {
+            # Losing the link only costs the close-back, so never let it cost the alert itself.
+            Write-Information "Failed to build alert source context: $($_.Exception.Message)"
+            return $null
+        }
+    }
+
     try {
         Write-Information "Sending post-execution alerts for task $($TaskInfo.Name)"
 
@@ -299,11 +329,16 @@ function Send-CIPPScheduledTaskAlert {
                                     $GroupBody += $AlertCommentHtml
                                     $GroupHTML = ConvertTo-PSAHtml -Html $GroupBody
 
+                                    # Scoped to this group's rows so each per-user ticket resolves on
+                                    # its own user clearing, not on anyone else's.
+                                    $GroupAlertSource = Get-AlertSourceContext -Rows $Group.Group -CmdletName $TaskInfo.Command -Tenant $TenantFilter -Type $TaskType
+
                                     if ([string]::IsNullOrWhiteSpace($GroupKey)) {
                                         # Rows without a usable user identifier - fall back to the
                                         # task-level affected user if one was resolved.
                                         $GroupParams = @{ Type = 'psa'; Title = $title; HTMLContent = $GroupHTML; TenantFilter = $TenantFilter }
                                         if ($TaskAffectedUser) { $GroupParams.AffectedUser = $TaskAffectedUser }
+                                        if ($GroupAlertSource) { $GroupParams.AlertSource = $GroupAlertSource }
                                         Send-CIPPAlert @GroupParams
                                     } else {
                                         $GroupDisplayName = if ($DisplayField) { $Group.Group[0].$DisplayField } else { $null }
@@ -313,7 +348,9 @@ function Send-CIPPScheduledTaskAlert {
                                             UPN         = $GroupKey
                                             DisplayName = $GroupDisplayName
                                         }
-                                        Send-CIPPAlert -Type 'psa' -Title $UserTitle -HTMLContent $GroupHTML -TenantFilter $TenantFilter -AffectedUser $AffectedUser
+                                        $UserParams = @{ Type = 'psa'; Title = $UserTitle; HTMLContent = $GroupHTML; TenantFilter = $TenantFilter; AffectedUser = $AffectedUser }
+                                        if ($GroupAlertSource) { $UserParams.AlertSource = $GroupAlertSource }
+                                        Send-CIPPAlert @UserParams
                                     }
                                 }
                                 $PsaSplitSent = $true
@@ -327,6 +364,9 @@ function Send-CIPPScheduledTaskAlert {
                 if (-not $PsaSplitSent) {
                     $PsaParams = @{ Type = 'psa'; Title = $title; HTMLContent = (ConvertTo-PSAHtml -Html $HTML); TenantFilter = $TenantFilter }
                     if ($TaskAffectedUser) { $PsaParams.AffectedUser = $TaskAffectedUser }
+                    # One ticket covering every row, so it only closes once all of them clear.
+                    $AlertSource = Get-AlertSourceContext -Rows $Results -CmdletName $TaskInfo.Command -Tenant $TenantFilter -Type $TaskType
+                    if ($AlertSource) { $PsaParams.AlertSource = $AlertSource }
                     Send-CIPPAlert @PsaParams
                 }
             }

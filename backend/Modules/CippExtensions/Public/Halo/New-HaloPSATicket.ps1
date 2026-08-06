@@ -6,7 +6,8 @@ function New-HaloPSATicket {
     $client,
     [string]$UserUPN,
     [string]$AzureOID,
-    [string]$DisplayName
+    [string]$DisplayName,
+    $AlertSource
   )
   #Get HaloPSA Token based on the config we have.
   $Table = Get-CIPPTable -TableName Extensionsconfig
@@ -92,6 +93,11 @@ function New-HaloPSATicket {
           }
 
           if ($NoteAdded) {
+            # Items reported onto an existing consolidated ticket are linked to that ticket too,
+            # otherwise a recurrence after the first run would never be closable.
+            if ($AlertSource) {
+              Add-CIPPAlertTicketLink -AlertSource $AlertSource -TicketID $ExistingTicket.TicketID -Provider 'HaloPSA' -Title $title
+            }
             return "Note added to ticket in HaloPSA: $($ExistingTicket.TicketID)"
           }
         }
@@ -168,6 +174,12 @@ function New-HaloPSATicket {
         }
         Add-CIPPAzDataTableEntity @TicketTable -Entity $TicketObject -Force
         Write-Information 'Ticket added to consolidation table'
+      }
+      # Linked regardless of ConsolidateTickets - the two are unrelated. Consolidation decides
+      # whether a repeat alert reuses a ticket; this records what the ticket is about so it can
+      # be closed when that stops being true.
+      if ($AlertSource) {
+        Add-CIPPAlertTicketLink -AlertSource $AlertSource -TicketID $Ticket.id -Provider 'HaloPSA' -Title $title
       }
       return "Ticket created in HaloPSA: $($Ticket.id)"
     }

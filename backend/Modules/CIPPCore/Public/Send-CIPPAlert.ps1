@@ -17,6 +17,7 @@ function Send-CIPPAlert {
         $RowKey = [string][guid]::NewGuid(),
         $Attachments,
         $AffectedUser,
+        $AlertSource,
         [switch]$UseStandardizedSchema
     )
     Write-Information 'Shipping Alert'
@@ -347,6 +348,12 @@ function Send-CIPPAlert {
                     $Alert.AffectedUser = $AffectedUser
                     $UserLabel = if ($AffectedUser.UPN) { $AffectedUser.UPN } elseif ($AffectedUser.AzureOID) { "OID:$($AffectedUser.AzureOID)" } else { 'unknown' }
                     Write-Information "PSA alert AffectedUser: $UserLabel"
+                }
+                # Which alert items this ticket covers. Recorded against the created ticket so the
+                # ticket can be closed back when those items stop appearing.
+                if ($AlertSource) {
+                    $Alert.AlertSource = $AlertSource
+                    Write-Information "PSA alert source: $($AlertSource.CmdletName) ($(@($AlertSource.ContentHashes).Count) item(s))"
                 }
                 $PsaResult = New-CippExtAlert -Alert $Alert
                 if ($PsaResult) {

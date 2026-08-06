@@ -448,6 +448,44 @@
           "compareType": "hasValue",
           "action": "hide"
         }
+      },
+      {
+        "type": "switch",
+        "name": "HaloPSA.CloseResolvedTickets",
+        "label": "Close tickets when the alert clears",
+        "helperText": "Adds a note to a CIPP-raised ticket when the items it reported stop appearing, and closes it once none are left. An item has to be absent on two consecutive alert runs before it counts as resolved, so a failed check can't close tickets.",
+        "condition": {
+          "field": "HaloPSA.TicketType",
+          "compareType": "hasValue",
+          "action": "hide"
+        }
+      },
+      {
+        "type": "autoComplete",
+        "name": "HaloPSA.ResolutionOutcome",
+        "dependsOn": "HaloPSA.TicketType",
+        "label": "HaloPSA Resolution Outcome",
+        "placeholder": "Select the outcome that closes a ticket",
+        "helperText": "The action applied when every item on a ticket has cleared. Use an outcome that closes the ticket and that your HaloPSA API user can run. Only outcomes from the selected Ticket Type's workflow are listed. Leave blank to add the resolution note but leave tickets open.",
+        "fullRow": true,
+        "multiple": false,
+        "api": {
+          "url": "/api/ExecExtensionMapping",
+          "data": {
+            "List": "HaloPSAFields"
+          },
+          "queryKey": "HaloOutcomes",
+          "dataKey": "Outcomes",
+          "labelField": "buttonname",
+          "valueField": "id",
+          "showRefresh": true
+        },
+        "condition": {
+          "field": "HaloPSA.CloseResolvedTickets",
+          "compareType": "is",
+          "compareValue": true,
+          "action": "hide"
+        }
       }
     ],
     "mappingRequired": true,
