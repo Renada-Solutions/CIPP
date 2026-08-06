@@ -277,7 +277,16 @@ function Push-ExecScheduledCommand {
                 Write-Information "Starting task: $($Item.Command) for tenant: $Tenant with parameters: $($commandParameters | ConvertTo-Json -Depth 10)"
                 $results = & $Item.Command @commandParameters
             } catch {
-                $results = "Task Failed: $($_.Exception.Message)"
+                # Commands like New-CIPPUserTask throw a hashtable carrying their partial results
+                # (throw @{'Results' = ...}). A thrown hashtable's Exception.Message is the literal
+                # type name, so unwrap it - otherwise the stored result reads
+                # "Task Failed: System.Collections.Hashtable" instead of what actually went wrong.
+                $ThrownObject = $_.TargetObject
+                $results = if ($ThrownObject -is [System.Collections.IDictionary] -and $ThrownObject.Results) {
+                    "Task Failed: $(@($ThrownObject.Results) -join ' | ')"
+                } else {
+                    "Task Failed: $($_.Exception.Message)"
+                }
                 $State = 'Failed'
             }
             Write-Information 'Ran the command. Processing results'
