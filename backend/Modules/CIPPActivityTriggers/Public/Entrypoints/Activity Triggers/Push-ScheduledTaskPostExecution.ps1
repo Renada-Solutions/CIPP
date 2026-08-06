@@ -105,6 +105,7 @@ function Push-ScheduledTaskPostExecution {
                 ScheduledTime = "$nextRunUnixTime"
                 HasErrors     = $HasFailures
                 ErrorSummary  = $FailureSummary
+                Acknowledged  = $false
             }
         } else {
             # Invalid recurrence, mark as completed
@@ -116,6 +117,7 @@ function Push-ScheduledTaskPostExecution {
                 TaskState    = 'Completed'
                 HasErrors    = $HasFailures
                 ErrorSummary = $FailureSummary
+                Acknowledged = $false
             }
         }
     } else {
@@ -128,6 +130,7 @@ function Push-ScheduledTaskPostExecution {
             TaskState    = if ($FailureCount -gt 0 -and $FailureCount -eq $TotalTenants) { 'Failed' } else { 'Completed' }
             HasErrors    = $HasFailures
             ErrorSummary = $FailureSummary
+            Acknowledged = $false
         }
     }
 

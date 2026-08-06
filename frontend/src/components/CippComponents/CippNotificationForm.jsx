@@ -43,6 +43,7 @@ export const CippNotificationForm = ({
     { label: "Adding a tenant", value: "NewTenant" },
     { label: "Executing the offboard wizard", value: "ExecOffboardUser" },
     { label: "Scheduled task failures", value: "Scheduler_UserTasks" },
+    { label: "Tasks pending with issues", value: "Scheduler_Preflight" },
   ];
 
   const severityTypes = [

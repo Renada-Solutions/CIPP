@@ -104,6 +104,13 @@ function Invoke-ListScheduledItems {
         $Tasks = $Tasks | Where-Object { $_.Name -like $SearchTitle }
     }
 
+    # Also client-side, deliberately: an OData clause like "Acknowledged ne true" excludes every row
+    # that does not carry the property at all, which is every task written before acknowledgement
+    # existed - the filter would silently empty the view instead of narrowing it.
+    if ($NeedsAttention) {
+        $Tasks = $Tasks | Where-Object { $_.Acknowledged -ne $true }
+    }
+
     $AllowedTenants = Test-CIPPAccess -Request $Request -TenantList
 
     $TenantLookup = @{}
@@ -160,6 +167,9 @@ function Invoke-ListScheduledItems {
         }
         if ($null -eq $Task.AtRiskReason) {
             $Task | Add-Member -NotePropertyName AtRiskReason -NotePropertyValue '' -Force
+        }
+        if ($null -eq $Task.Acknowledged) {
+            $Task | Add-Member -NotePropertyName Acknowledged -NotePropertyValue $false -Force
         }
         try {
             $Task.ExecutedTime = [DateTimeOffset]::FromUnixTimeSeconds($Task.ExecutedTime).UtcDateTime

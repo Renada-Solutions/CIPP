@@ -76,6 +76,17 @@ function Start-CIPPTaskPreflightCheck {
 
     # One subscribedSkus call per distinct tenant, not per task. Deliberately not Get-CIPPLicenseOverview,
     # which also expands every assigned user and group and is far more than is needed here.
+    # Loaded once, not per SKU: Convert-SKUname re-reads the conversion CSV on every call otherwise.
+    $ConvertTable = try {
+        [System.IO.File]::ReadAllText((Join-Path $env:CIPPRootPath 'Config\ConversionTable.csv')) | ConvertFrom-Csv
+    } catch { $null }
+    function Get-FriendlySkuName {
+        param($SkuId, $Fallback)
+        $Name = if ($ConvertTable) { Convert-SKUname -SkuID $SkuId -ConvertTable $ConvertTable }
+        # Unmapped SKUs come back as an array of the inputs rather than a name - use the fallback then.
+        if ($Name -is [string] -and -not [string]::IsNullOrWhiteSpace($Name)) { $Name } else { $Fallback }
+    }
+
     $AvailabilityByTenant = @{}
     foreach ($TenantFilter in ($LicenseTasks.TenantFilter | Sort-Object -Unique)) {
         try {
@@ -100,14 +111,18 @@ function Start-CIPPTaskPreflightCheck {
         if ($null -eq $Available) { continue }
 
         $Task = $Entry.Task
+        # One list per task; licence availability is the first check, but anything that can predict a
+        # failure cheaply belongs here - a username already taken, a target mailbox or group that has
+        # been deleted, a tenant that is no longer reachable. Add to $Problems and the flag, reason,
+        # view and notifications all follow without further wiring.
         $Problems = [System.Collections.Generic.List[string]]::new()
 
         foreach ($Sku in $Entry.Skus) {
             $SkuKey = ([string]$Sku).ToLowerInvariant()
             if (!$Available.ContainsKey($SkuKey)) {
-                $Problems.Add("the tenant no longer has a subscription for SKU $Sku")
+                $Problems.Add("the tenant no longer has a subscription for $(Get-FriendlySkuName -SkuId $Sku -Fallback "SKU $Sku")")
             } elseif ($Available[$SkuKey].Available -lt 1) {
-                $Problems.Add("0 of 1 licences available for $($Available[$SkuKey].SkuPartNumber)")
+                $Problems.Add("no licences available for $(Get-FriendlySkuName -SkuId $Sku -Fallback $Available[$SkuKey].SkuPartNumber)")
             }
         }
 
@@ -135,7 +150,10 @@ function Start-CIPPTaskPreflightCheck {
             # Only on the transition into at-risk, so a task left flagged for a week does not
             # re-notify on every run of this timer. A reason that changes while the task stays at
             # risk updates the row above but is not worth alerting on again.
-            Write-LogMessage -API 'Scheduler_UserTasks' -tenant $Entry.TenantFilter -message "Scheduled task '$($Task.Name)' is at risk: $($Problems -join '; ')." -sev Error
+            # Deliberately its own API name rather than Scheduler_UserTasks: at-risk is a prediction
+            # about a task that has not run, and admins may want those notifications separately from
+            # (or instead of) actual failures.
+            Write-LogMessage -API 'Scheduler_Preflight' -tenant $Entry.TenantFilter -message "Scheduled task '$($Task.Name)' is at risk: $($Problems -join '; ')." -sev Error
         } elseif ($IsAtRisk) {
             Write-Information "Preflight: task $($Task.RowKey) is still at risk, reason updated."
         } else {

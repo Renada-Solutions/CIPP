@@ -24,6 +24,7 @@ export const SchedulerTable = ({
   filters,
   showSystemJobsToggle = false,
   showAddTask = false,
+  cardActions = null,
 }) => {
   const [editTaskId, setEditTaskId] = useState(null)
   const [cloneTaskId, setCloneTaskId] = useState(null)
@@ -44,18 +45,14 @@ export const SchedulerTable = ({
 
   const offCanvas = {
     children: (extendedData) => (
-      <ScheduledTaskDetails
-        data={extendedData}
-        showActions={true}
-        showTitle={false}
-      />
+      <ScheduledTaskDetails data={extendedData} showActions={true} showTitle={false} />
     ),
     size: 'xl',
     actions: actions,
   }
 
   const cardButton =
-    showSystemJobsToggle || showAddTask ? (
+    showSystemJobsToggle || showAddTask || cardActions ? (
       <>
         {showSystemJobsToggle && (
           <Button onClick={() => setShowHiddenJobs((prev) => !prev)}>
@@ -63,6 +60,7 @@ export const SchedulerTable = ({
           </Button>
         )}
         {showAddTask && <CippSchedulerDrawer buttonText="Add Task" />}
+        {cardActions}
       </>
     ) : undefined
 

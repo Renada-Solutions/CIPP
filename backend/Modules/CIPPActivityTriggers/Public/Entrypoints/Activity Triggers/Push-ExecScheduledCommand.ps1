@@ -146,6 +146,7 @@ function Push-ExecScheduledCommand {
                 ErrorSummary = "$Results"
                 AtRisk       = $false
                 AtRiskReason = ''
+                Acknowledged = $false
             }
         }
 
@@ -168,6 +169,7 @@ function Push-ExecScheduledCommand {
                 ErrorSummary = "$Results"
                 AtRisk       = $false
                 AtRiskReason = ''
+                Acknowledged = $false
             }
         }
         Set-CippScheduledTaskContext -TaskId ''
@@ -187,6 +189,7 @@ function Push-ExecScheduledCommand {
                 ErrorSummary = "$Results"
                 AtRisk       = $false
                 AtRiskReason = ''
+                Acknowledged = $false
             }
         }
         Set-CippScheduledTaskContext -TaskId ''
@@ -379,6 +382,7 @@ function Push-ExecScheduledCommand {
                 ErrorSummary  = "$errorMessage"
                 AtRisk        = $false
                 AtRiskReason  = ''
+                Acknowledged  = $false
             }
         }
         Write-LogMessage -API 'Scheduler_UserTasks' -tenant $Tenant -tenantid $TenantInfo.customerId -message "Failed to execute task $($task.Name): $errorMessage" -sev Error -LogData (Get-CippExceptionData -Exception $_.Exception)
@@ -431,6 +435,7 @@ function Push-ExecScheduledCommand {
                         ErrorSummary = "$results"
                         AtRisk       = $false
                         AtRiskReason = ''
+                        Acknowledged = $false
                     }
                 } else {
                     # Update task state to 'Processing' to indicate orchestration is in progress
@@ -460,6 +465,7 @@ function Push-ExecScheduledCommand {
                 ErrorSummary = $TaskErrorSummary
                 AtRisk       = $false
                 AtRiskReason = ''
+                Acknowledged = $false
             }
         } else {
             #if recurrence is just a number, add it in days.
@@ -495,6 +501,7 @@ function Push-ExecScheduledCommand {
                 ErrorSummary  = $TaskErrorSummary
                 AtRisk        = $false
                 AtRiskReason  = ''
+                Acknowledged  = $false
             }
         }
     } catch {
