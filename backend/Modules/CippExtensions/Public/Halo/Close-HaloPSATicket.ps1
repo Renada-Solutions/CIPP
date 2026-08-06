@@ -59,18 +59,30 @@ function Close-HaloPSATicket {
 
   try {
     $Token = Get-HaloToken -configuration $Configuration
+    # sendemail = false is required, not cosmetic. A Halo instance's closing outcome usually has an
+    # email template attached (the sandbox's built-in "Close" has emailtemplate_id 14), and Halo then
+    # refuses the whole action with 400 "Please complete the Email To field in order to send an
+    # Email" - so without this the close silently never happens on most instances. CIPP is posting an
+    # internal system note here, already hidden from the end user, so suppressing the email is also
+    # the behaviour we want: nobody should get a "your ticket is closed" mail from a CIPP sweep.
     $Object = [PSCustomObject]@{
       ticket_id      = $TicketID
       outcome_id     = $Outcome
       hiddenfromuser = $true
+      sendemail      = $false
       note_html      = $Note
     }
     $Body = ConvertTo-Json -Compress -Depth 10 -InputObject @($Object)
 
-    if ($PSCmdlet.ShouldProcess("HaloPSA ticket $TicketID", $(if ($WillClose) { 'Close ticket' } else { 'Add resolution note' }))) {
-      $null = Invoke-RestMethod -Uri "$($Configuration.ResourceURL)/actions" -ContentType 'application/json; charset=utf-8' -Method Post -Body $Body -Headers @{Authorization = "Bearer $($Token.access_token)" }
-      Write-Information "$(if ($WillClose) { 'Closed' } else { 'Noted resolution on' }) HaloPSA ticket $TicketID"
+    # Returning $false when ShouldProcess declines matters: the caller deletes its link rows on a
+    # $true, so reporting success under -WhatIf would drop the links without ever closing the ticket
+    # and the resolution would be lost for good.
+    if (-not $PSCmdlet.ShouldProcess("HaloPSA ticket $TicketID", $(if ($WillClose) { 'Close ticket' } else { 'Add resolution note' }))) {
+      return $false
     }
+
+    $null = Invoke-RestMethod -Uri "$($Configuration.ResourceURL)/actions" -ContentType 'application/json; charset=utf-8' -Method Post -Body $Body -Headers @{Authorization = "Bearer $($Token.access_token)" }
+    Write-Information "$(if ($WillClose) { 'Closed' } else { 'Noted resolution on' }) HaloPSA ticket $TicketID"
     return $true
   }
   catch {
