@@ -71,13 +71,28 @@ export const CippBaselineStandardItem = ({
   onToggle,
   onRemove,
   instanceId,
+  savedConfig,
 }) => {
-  // Multi-instance standards use 'Name#n' keys so each instance keeps its own config.
+  // Multi-instance standards use 'Name#<id>' keys so each instance keeps its own config.
+  // Legacy keys were positional counters; new ones are opaque ids - only number the
+  // legacy ones, the id itself means nothing to a user.
   const fieldBase = instanceId ?? standard.name
-  const instanceNumber = fieldBase.includes('#')
-    ? Number(fieldBase.split('#')[1]) + 1
+  const instanceSuffix = fieldBase.includes('#')
+    ? fieldBase.split('#')[1]
+    : null
+  const instanceNumber = /^\d+$/.test(instanceSuffix ?? '')
+    ? Number(instanceSuffix) + 1
     : null
   const watched = useWatch({ control: formControl.control, name: fieldBase })
+  // Identity-carrying standards (CA/Intune templates via instanceIdentity, manual tasks
+  // via taskName) title as '<label> - <selected name>' so ten instances stay tellable.
+  const identityValueRaw = standard.instanceIdentity
+    ? watched?.variables?.[standard.instanceIdentity]
+    : watched?.variables?.taskName
+  const identityLabel =
+    identityValueRaw && typeof identityValueRaw === 'object'
+      ? (identityValueRaw.label ?? identityValueRaw.value)
+      : identityValueRaw
   const variableEntries = Object.entries(standard.variables ?? {})
   // The license catalog loads as an async chunk; this re-renders once it lands so
   // the required-license chip shows friendly names instead of service plan codes.
@@ -88,18 +103,23 @@ export const CippBaselineStandardItem = ({
     ),
   ]
 
-  // Seed the action posture when the standard is first added; the settings fields seed
-  // themselves (recommended value first) inside CippBaselineStandardSettings.
+  // Seed the action posture: saved configuration (editing an existing baseline) wins,
+  // then the defaults for a freshly added standard. The settings fields seed themselves
+  // (saved value > recommended) inside CippBaselineStandardSettings.
   useEffect(() => {
-    if (formControl.getValues(`${fieldBase}.remediateEnabled`) === undefined) {
-      formControl.setValue(`${fieldBase}.remediateEnabled`, true)
+    const postureDefaults = {
+      remediateEnabled: true,
+      alertEnabled: true,
+      alertOnRemediate: false,
     }
-    if (formControl.getValues(`${fieldBase}.alertEnabled`) === undefined) {
-      formControl.setValue(`${fieldBase}.alertEnabled`, true)
-    }
-    if (formControl.getValues(`${fieldBase}.alertOnRemediate`) === undefined) {
-      formControl.setValue(`${fieldBase}.alertOnRemediate`, false)
-    }
+    Object.entries(postureDefaults).forEach(([field, fallback]) => {
+      if (formControl.getValues(`${fieldBase}.${field}`) === undefined) {
+        formControl.setValue(
+          `${fieldBase}.${field}`,
+          savedConfig?.[field] ?? fallback
+        )
+      }
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fieldBase])
 
@@ -146,7 +166,9 @@ export const CippBaselineStandardItem = ({
         >
           <Box sx={{ minWidth: 0, flexGrow: 1, flexBasis: '30%' }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-              {standard.label}
+              {identityLabel
+                ? `${standard.label} - ${identityLabel}`
+                : standard.label}
               {instanceNumber ? ` (instance ${instanceNumber})` : ''}
             </Typography>
             <Typography variant="caption" color="text.secondary">
@@ -288,6 +310,7 @@ export const CippBaselineStandardItem = ({
                 standard={standard}
                 formControl={formControl}
                 namePrefix={`${fieldBase}.variables`}
+                initialValues={savedConfig?.variables}
               />
             </>
           ) : (
@@ -327,46 +350,59 @@ export const CippBaselineStandardItem = ({
             </Grid>
           </Grid>
 
-          <Stack direction="row" spacing={1} alignItems="center">
-            <Typography
-              variant="caption"
-              sx={{
-                fontWeight: 600,
-                color: 'text.secondary',
-                textTransform: 'uppercase',
-                letterSpacing: 0.5,
-              }}
-            >
-              Expected value (rendered from the settings above)
+          {standard.prepare ? (
+            // Template-backed standards (CA/Intune): the real expected value is the FULL
+            // selected template, normalized by the engine at run time - a rendered
+            // preview here would show only the template reference and mislead.
+            <Typography variant="caption" color="text.secondary">
+              The expected configuration is the full selected template - use the
+              preview button on the template picker to inspect it. The engine
+              compares every setting in it against the tenant on each run.
             </Typography>
-            <Chip
-              variant="outlined"
-              size="small"
-              label={`Compare: ${standard.compare ?? 'subset'}`}
-            />
-          </Stack>
-          <Box
-            sx={{
-              p: 1.5,
-              bgcolor: 'success.lighter',
-              borderRadius: '12px',
-              border: '2px solid',
-              borderColor: 'success.main',
-            }}
-          >
-            <Typography
-              variant="body2"
-              sx={{
-                fontFamily: 'monospace',
-                fontSize: '0.8125rem',
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-                color: 'success.dark',
-              }}
-            >
-              {JSON.stringify(renderedExpected, null, 2)}
-            </Typography>
-          </Box>
+          ) : (
+            <>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Typography
+                  variant="caption"
+                  sx={{
+                    fontWeight: 600,
+                    color: 'text.secondary',
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  Expected value (rendered from the settings above)
+                </Typography>
+                <Chip
+                  variant="outlined"
+                  size="small"
+                  label={`Compare: ${standard.compare ?? 'subset'}`}
+                />
+              </Stack>
+              <Box
+                sx={{
+                  p: 1.5,
+                  bgcolor: 'success.lighter',
+                  borderRadius: '12px',
+                  border: '2px solid',
+                  borderColor: 'success.main',
+                }}
+              >
+                <Typography
+                  variant="body2"
+                  sx={{
+                    fontFamily: 'monospace',
+                    fontSize: '0.8125rem',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    color: 'success.dark',
+                  }}
+                >
+                  {JSON.stringify(renderedExpected, null, 2)}
+                </Typography>
+              </Box>
+            </>
+          )}
         </Stack>
       </AccordionDetails>
     </Accordion>
