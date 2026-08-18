@@ -60,6 +60,8 @@ export const CippSettingsSideBar = (props) => {
       // General Settings
       usageLocation: formValues.usageLocation,
       tablePageSize: formValues.tablePageSize,
+      tableViewMode: formValues.tableViewMode,
+      defaultTestSuite: formValues.defaultTestSuite,
       userAttributes: formValues.userAttributes,
 
       // Table Filter Preferences

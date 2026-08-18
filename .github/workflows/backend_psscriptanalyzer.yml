@@ -16,6 +16,9 @@ jobs:
     if: github.repository_owner == 'CyberDrain'
     name: PSScriptAnalyzer
     runs-on: ubuntu-latest
+    # Checkout and artifact upload only; nothing is written back to the repo.
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - name: Install PSScriptAnalyzer
@@ -26,9 +29,15 @@ jobs:
       - name: Run PSScriptAnalyzer
         shell: pwsh
         run: |
-          $results = Invoke-ScriptAnalyzer -Path ./backend -Recurse -Severity Error,Warning -ExcludeRule PSAvoidUsingWriteHost
+          # Analyze the backend, excluding the Pester test tree (backend/Tests/**)
+          $targets = Get-ChildItem -Path ./backend -Recurse -File -Include '*.ps1', '*.psm1' |
+            Where-Object { $_.FullName -notmatch '[\\/]backend[\\/]Tests[\\/]' }
+          $results = foreach ($file in $targets) {
+            Invoke-ScriptAnalyzer -Path $file.FullName -Severity Error,Warning -ExcludeRule PSAvoidUsingWriteHost
+          }
           if ($results) {
             $results | Format-Table -AutoSize
+            $results | Format-List | Out-File -FilePath psscriptanalyzer-results.txt
             $errors = $results | Where-Object { $_.Severity -eq 'Error' }
             if ($errors) {
               Write-Error "PSScriptAnalyzer found $($errors.Count) error(s). Please fix before merging."

@@ -1,0 +1,21 @@
+# Devices
+
+This page lists the devices registered in the tenant's directory, covering everything Entra ID knows about regardless of whether it is managed by Intune. It is the place to check a device's join type and sign-in state, block a device that should no longer authenticate, or retrieve its recovery key.
+
+## Table Details
+
+The properties returned are for the Graph resource type `device`. For more information on the properties please see the [Graph documentation](https://learn.microsoft.com/en-us/graph/api/resources/device?view=graph-rest-beta#properties).
+
+## Table Actions
+
+<table><thead><tr><th>Action</th><th>Description</th><th data-type="checkbox">Bulk Action Available</th></tr></thead><tbody><tr><td>View in Entra</td><td>Opens the device in the Microsoft Entra admin center in a new tab.</td><td>false</td></tr><tr><td>Enable Device</td><td>Allows the device to authenticate with tenant credentials again. Greyed out for a device that is already enabled.</td><td>true</td></tr><tr><td>Disable Device</td><td>Blocks the device from authenticating with tenant credentials, without removing it from the directory. Greyed out for a device that is already disabled.</td><td>true</td></tr><tr><td>Retrieve BitLocker Keys</td><td>Returns the device's BitLocker recovery key from Entra ID, displayed in the result.</td><td>true</td></tr><tr><td>Delete Device</td><td>Removes the device from Entra ID. Any recovery keys held against it are lost with it, so retrieve them first if they may still be needed.</td><td>true</td></tr></tbody></table>
+
+{% hint style="warning" %}
+Retrieving a BitLocker key returns a live recovery key in plain text, so treat the result as sensitive and avoid leaving it in a ticket or a chat message. Each retrieval is written to the CIPP audit log, recording who asked for it and when.
+{% endhint %}
+
+{% hint style="info" %}
+Disabling a device stops it authenticating but leaves the object in place, so the action can be reversed and the device's recovery keys stay available. Deleting is the destructive option, and a device that is still in use will simply register itself again the next time it is joined.
+{% endhint %}
+
+{% include "../../../../.gitbook/includes/feature-request.md" %}

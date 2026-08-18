@@ -29,7 +29,7 @@ CyberDrain hosted clients do not need to manually complete this step. It is gene
 ### Choose which type of logon you want to allow to CIPP
 
 * Single tenant is the most secure, and the logons will be limited to the tenant you sign in with
-* Multi-tenant is required if you have a seperation between GDAP and normal usage tenant.
+* Multi-tenant is required if you have a separation between GDAP and normal usage tenant.
 {% endstep %}
 
 {% step %}
@@ -39,29 +39,29 @@ Sign in with a user that has Application Administrator permissions or higher, ad
 {% endstep %}
 {% endstepper %}
 
-{% @storylane/embed subdomain="app" linkValue="admss49amlvr" url="https://app.storylane.io/share/admss49amlvr" %}
+{% @storylane/embed subdomain="app" url="https://app.storylane.io/share/admss49amlvr" linkValue="admss49amlvr" %}
 
 ## Additional User Setup
 
-Once you have your initial user added, this user can add more users through the CIPP interface under CIPP -> Advanced -> Super Admin -> [cipp-users.md](../../user-documentation/cipp/advanced/super-admin/cipp-users.md "mention").
+Once you have your initial user added, this user can add more users through the CIPP interface under CIPP -> Advanced -> Authentication -> [cipp-users.md](../../user-documentation/cipp/advanced/authentication/cipp-users.md "mention").
 
 ## Built-In Roles
 
-CIPP features a role management system which utilizes the [Roles feature of Azure Static Web Apps](https://learn.microsoft.com/en-us/azure/static-web-apps/authentication-authorization?tabs=invitations#roles). The roles available in CIPP are as follows:
+CIPP features a role management system which utilises the [Roles feature of Azure Static Web Apps](https://learn.microsoft.com/en-us/azure/static-web-apps/authentication-authorization?tabs=invitations#roles). The roles available in CIPP are as follows:
 
-| Role Name  | Description                                                                                                                                                                                       |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| readonly   | Only allowed to read and list items and send push messages to users.                                                                                                                              |
-| editor     | Allowed to perform everything, except change system settings and manage Standards.                                                                                                                |
-| admin      | Allowed to perform everything.                                                                                                                                                                    |
-| superadmin | A role that is only allowed to access the settings menu for specific high-privilege settings, such as setting up the [owntenant.md](../../../setup/installation/owntenant.md "mention") settings. |
+| Role Name  | Description                                                                                                                                                                           |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| readonly   | Only allowed to read and list items and send push messages to users.                                                                                                                  |
+| editor     | Allowed to perform everything, except change system settings and manage Standards.                                                                                                    |
+| admin      | Allowed to perform everything.                                                                                                                                                        |
+| superadmin | A role that is only allowed to access the settings menu for specific high-privilege settings, such as setting up the [owntenant.md](../installation/owntenant.md "mention") settings. |
 
-You can assign these roles to Entra groups or users using the [custom-roles](../../../user-documentation/cipp/advanced/super-admin/custom-roles/ "mention") page, so you no longer have to add users manually.
+You can assign these roles to Entra groups or users using the [cipp-roles](../../user-documentation/cipp/advanced/authentication/cipp-roles/ "mention") page, so you no longer have to add users manually.
 
 ## Custom Roles
 
 {% hint style="info" %}
-Not sure how built-in and custom roles combine when a user is in multiple Entra groups? See [how-cipp-evaluates-roles.md](../../../setup/resources/how-cipp-evaluates-roles.md "mention") for the precedence for rules.
+Not sure how built-in and custom roles combine when a user is in multiple Entra groups? See [how-cipp-evaluates-roles.md](../resources/how-cipp-evaluates-roles.md "mention") for the precedence for rules.
 {% endhint %}
 
 While CIPP only supplies the above roles by default, you can create your own custom roles and apply them to your users with `editor` or `readonly` rights, admin users are unaffected by custom roles.
@@ -78,7 +78,7 @@ Set up Custom Roles by following these steps:
 {% step %}
 ### Open the CIPP Roles Page
 
-Go to CIPP -> Advanced -> Super Admin -> [custom-roles](../../../user-documentation/cipp/advanced/super-admin/custom-roles/ "mention").
+Go to CIPP -> Advanced -> Authentication -> [cipp-roles](../../user-documentation/cipp/advanced/authentication/cipp-roles/ "mention").
 {% endstep %}
 
 {% step %}
@@ -114,10 +114,25 @@ Optionally select the CIPP endpoints that you want to block for the role. For ex
 {% step %}
 ### API Permissions
 
-Select the API permission from the listed categories and choose from None, Read or Read/Write.
+Custom roles define their permissions in one of two ways, chosen with the **Simple (patterns)** and **Advanced (per-category)** toggle. A new role opens in Simple mode, and a role you open for editing opens in Advanced mode.
+
+**Simple (patterns)** works the way CIPP's built-in roles do. An **Include** list grants everything matching its patterns, an **Exclude** list then denies anything matching its own, and exclusions always win.
+
+* Patterns match permission names in the form `Category.Object.Level`, where the level is `Read` or `ReadWrite`, and `*` matches anything. `Identity.*.Read` grants read access to everything under Identity, and `*` grants everything.
+* A pattern holds up to three dot-separated segments of letters, numbers and `*`. Anything else is reported and dropped rather than saved.
+* **Start from a built-in role** replaces both lists with that role's own patterns, which you are then free to edit.
+* The **Live result** panel counts what each pattern matches and flags any pattern matching nothing, so a typo does not pass unnoticed.
+* Patterns are expanded every time permissions are evaluated, so a role built on wildcards picks up endpoints added in later CIPP releases on its own.
+
+**Advanced (per-category)** is the category list, where each category is set to None, Read or Read/Write.
 
 * To find out which API endpoints are affected by these selections, click on the Info button.
 * Not defining a category is the same as setting None. Be sure that you define all base role permissions you want to apply to the user.
+* A role defined this way grants only the categories that existed when you saved it, so review it after a CIPP update. See [how-cipp-evaluates-roles.md](../resources/how-cipp-evaluates-roles.md "mention").
+
+{% hint style="warning" %}
+The two modes are not merged. Saving in Simple mode replaces the role's permissions with the patterns on screen, and CIPP warns you when the categories and the patterns have diverged.
+{% endhint %}
 {% endstep %}
 
 {% step %}

@@ -48,6 +48,9 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - CRAFT_VERBOSE=true
       - App__Setup__Enabled=false
+      # Where the SearchDocs MCP tool finds the docs. Only needed in dev: the image puts them
+      # at $CIPPRootPath/Docs, which Get-CippDocsRoot probes by default.
+      - CIPPDocsPath=/app/Docs
       - AzureWebJobsStorage=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://cipp-azurite:10000/devstoreaccount1;QueueEndpoint=http://cipp-azurite:10001/devstoreaccount1;TableEndpoint=http://cipp-azurite:10002/devstoreaccount1;
       - NonLocalHostAzurite=true
       - CIPPNG=true
@@ -59,9 +62,9 @@ services:
       - App__Worker__BgPoolSize=8
       - App__StatsHistory__SampleIntervalSeconds=10
       # GC overrides for the pulled craft:dev image (the rebuilt image bakes these):
-      # Workstation GC + 2 GiB absolute heap cap.
+      # Workstation GC + 2.35 GiB absolute heap cap - same as production images
       - DOTNET_gcServer=0
-      - DOTNET_GCHeapHardLimit=0x80000000
+      - DOTNET_GCHeapHardLimit=0x95E00000
       # The Next.js dev server runs on the HOST when using for windows dev as bind mounts are too slow for node_modules
       - CRAFT_DEV_FRONTEND_URL=http://host.docker.internal:3000
     volumes:
@@ -69,6 +72,16 @@ services:
       # Live backend source. rw because runtime permission extraction writes
       # Config/function-permissions.json back into the repo (gitignored).
       - ../backend:/app/API
+      # GitBook docs, indexed by the SearchDocs MCP tool. Without this the tool reports the
+      # docs as missing, because only backend/ is bind-mounted and ../docs is not reachable
+      # from inside the container.
+      #
+      # Mounted at /app/Docs and pointed at by CIPPDocsPath rather than at the image's own
+      # /app/API/Docs: that path sits INSIDE the ../backend bind mount, and Docker creates a
+      # nested mountpoint on the host to hang it off — leaving an empty backend/Docs in the
+      # working tree that then shadows the real docs for Pester and anything else running
+      # outside the container.
+      - ../docs:/app/Docs:ro
       # ModuleBuilder-compiled CIPP modules overlay the bind-mounted source: each
       # mount shadows just that module's subdir, so the container imports the fast
       # single-file .psm1 instead of dot-sourcing Public/*.ps1 in every runspace.

@@ -1,0 +1,6 @@
+---
+icon: cloud
+---
+
+# Teams & SharePoint
+

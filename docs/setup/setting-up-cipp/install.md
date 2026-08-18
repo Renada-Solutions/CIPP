@@ -4,7 +4,7 @@ description: Installing Your CIPP
 
 # Installation
 
-Whether you opt to be hostedby CyberDrain or self-host, we've made installation of your instance a breeze. See below for instructions.
+Whether you opt to be hosted by CyberDrain or self-host, we've made installation of your instance a breeze. See below for instructions.
 
 ## CyberDrain Hosted Deployment
 
@@ -21,7 +21,7 @@ You will receive an email from GitHub once you complete your sponsorship payment
 Use the GitHub account you signed up for the sponsorship to log in to the management portal.&#x20;
 
 {% hint style="warning" %}
-If you used an organization account, please send in a support ticket to [helpdesk@cyberdrain.com](mailto:helpdesk@cyberdrain.com) with the organization GitHub account and a personal GitHub account. We will add the personal account to the sponsorship to allow you to log in.
+If you used an organisation account, please send in a support ticket to [helpdesk@cyberdrain.com](mailto:helpdesk@cyberdrain.com) with the organisation GitHub account and a personal GitHub account. We will add the personal account to the sponsorship to allow you to log in.
 {% endhint %}
 {% endstep %}
 
