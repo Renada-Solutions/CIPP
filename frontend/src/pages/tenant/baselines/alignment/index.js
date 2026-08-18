@@ -10,6 +10,7 @@ import {
   Divider,
   Link,
   Stack,
+  TextField,
   ToggleButton,
   ToggleButtonGroup,
   Tooltip,
@@ -50,6 +51,7 @@ import {
   LayersClear,
   PlayArrow,
   RemoveCircle,
+  Search,
   TaskAlt,
   Tune,
   Visibility,
@@ -63,6 +65,7 @@ import { CippDataTable } from '../../../../components/CippTable/CippDataTable'
 import { CippQueueTracker } from '../../../../components/CippTable/CippQueueTracker'
 import { CippHead } from '../../../../components/CippComponents/CippHead'
 import { CippInfoBar } from '../../../../components/CippCards/CippInfoBar'
+import { CippChartCard } from '../../../../components/CippCards/CippChartCard'
 import CippButtonCard from '../../../../components/CippCards/CippButtonCard'
 import { CippApiDialog } from '../../../../components/CippComponents/CippApiDialog'
 import { CippApiLogsDrawer } from '../../../../components/CippComponents/CippApiLogsDrawer'
@@ -79,6 +82,7 @@ import { useSettings } from '../../../../hooks/use-settings'
 import { ApiGetCall } from '../../../../api/ApiCall'
 import { parseCippDate } from '../../../../utils/parse-cipp-date'
 import { CippOffCanvas } from '../../../../components/CippComponents/CippOffCanvas'
+import { CippAutoComplete } from '../../../../components/CippComponents/CippAutocomplete'
 import CippJsonView from '../../../../components/CippFormPages/CippJSONView'
 
 const deviationColors = {
@@ -167,6 +171,69 @@ const TierPolicyView = ({ variableKey, templateRef }) => {
   )
 }
 
+// Detect-drift standards flag LIVE policies that no baseline covers. Their cards get a
+// View Policy button that pulls the real policy from the tenant on demand, so an
+// operator can read what it actually does before accepting or deleting it.
+const detectPolicySources = {
+  DetectIntuneDrift: {
+    title: 'Intune Policy',
+    url: '/api/ListIntunePolicy',
+    queryKey: 'ListIntunePolicy',
+    type: 'intune',
+  },
+  DetectConditionalAccessDrift: {
+    title: 'Conditional Access Policy',
+    url: '/api/ListConditionalAccessPolicies',
+    queryKey: 'ListConditionalAccessPolicies',
+    dataKey: 'Results',
+    type: 'default',
+  },
+}
+
+const LivePolicyView = ({ standardName, tenantFilter, policyId }) => {
+  const [visible, setVisible] = useState(false)
+  const source = detectPolicySources[standardName]
+  const policiesApi = ApiGetCall({
+    url: source.url,
+    data: { tenantFilter },
+    queryKey: `${source.queryKey}-${tenantFilter}`,
+    waiting: visible,
+  })
+  const policies = source.dataKey
+    ? (policiesApi.data?.[source.dataKey] ?? [])
+    : (policiesApi.data ?? [])
+  const policy = policies.find((entry) => entry?.id === policyId)
+  return (
+    <>
+      <Button
+        size="small"
+        variant="outlined"
+        startIcon={<Visibility />}
+        onClick={() => setVisible(true)}
+      >
+        View Policy
+      </Button>
+      <CippOffCanvas
+        visible={visible}
+        onClose={() => setVisible(false)}
+        title={source.title}
+        size="xl"
+      >
+        {policiesApi.isFetching ? (
+          <CircularProgress size={24} />
+        ) : policy ? (
+          <CippJsonView object={policy} defaultOpen={true} type={source.type} />
+        ) : (
+          <Typography variant="body2" color="text.secondary">
+            The policy could not be found - it may already have been removed
+            from the tenant.
+          </Typography>
+        )}
+      </CippOffCanvas>
+    </>
+  )
+}
+
 const propertyList = (properties) => (
   <Stack
     spacing={0}
@@ -218,6 +285,9 @@ const runModeLabels = {
   run: 'Full run',
   compare: 'Compare',
   oneoff: 'One-off remediation',
+  triage: 'Operator action',
+  stage: 'Stage change',
+  delete: 'Deletion',
 }
 
 // Timeline dot/chip styling per run outcome, mirroring the manage-tenant history page.
@@ -246,10 +316,61 @@ const outcomeTimeline = {
     icon: <InfoOutlined />,
     label: 'Skipped - No License',
   },
+  // Operator/system audit events (triage verdicts, overrides, stage changes,
+  // deletions carried out for denied deviations).
+  Accepted: { color: 'info', chipColor: 'info', icon: <TaskAlt /> },
+  'Property Accepted': { color: 'info', chipColor: 'info', icon: <TaskAlt /> },
+  'Denied - Remediation Ordered': {
+    color: 'warning',
+    chipColor: 'warning',
+    icon: <Cancel />,
+  },
+  'Denied - Delete Ordered': {
+    color: 'warning',
+    chipColor: 'warning',
+    icon: <Cancel />,
+  },
+  'Property Denied': {
+    color: 'warning',
+    chipColor: 'warning',
+    icon: <Cancel />,
+  },
+  'Triage Cleared': { color: 'grey', chipColor: 'default', icon: <Edit /> },
+  'Property Triage Cleared': {
+    color: 'grey',
+    chipColor: 'default',
+    icon: <Edit />,
+  },
+  'Task Completed': {
+    color: 'success',
+    chipColor: 'success',
+    icon: <TaskAlt />,
+  },
+  'Override Created': { color: 'info', chipColor: 'info', icon: <Tune /> },
+  'Override Removed': {
+    color: 'grey',
+    chipColor: 'default',
+    icon: <LayersClear />,
+  },
+  'Stage Advanced': {
+    color: 'primary',
+    chipColor: 'primary',
+    icon: <ArrowForward />,
+  },
+  Deleted: { color: 'error', chipColor: 'error', icon: <RemoveCircle /> },
+  'Delete Failed': {
+    color: 'error',
+    chipColor: 'error',
+    icon: <ErrorOutlineOutlined />,
+  },
 }
 
-// One readable sentence per run event for the historic timeline.
+// One readable sentence per run event for the historic timeline. Operator and
+// system events carry their own story in `detail`; run events derive one here.
 const historyEventMessage = (event) => {
+  if (event.detail) {
+    return `"${event.standardLabel}" - ${event.detail}`
+  }
   switch (event.outcome) {
     case 'Remediated':
       return `Successfully changed "${event.standardLabel}" to the expected configuration`
@@ -341,19 +462,46 @@ const Page = () => {
   const overrideDialog = useDialog()
   const [acceptPathTarget, setAcceptPathTarget] = useState(null)
   const acceptPathDialog = useDialog()
+  const [denyPathTarget, setDenyPathTarget] = useState(null)
+  const denyPathDialog = useDialog()
   const [removeOverrideTarget, setRemoveOverrideTarget] = useState(null)
   const removeOverrideDialog = useDialog()
+  // Filtering re-orders the timeline, so expansion state keys on stable event/run
+  // identity rather than render index.
   const [expandedEvents, setExpandedEvents] = useState(new Set())
-  const toggleEventExpansion = (index) => {
+  const toggleEventExpansion = (eventKey) => {
     setExpandedEvents((prev) => {
       const next = new Set(prev)
-      if (next.has(index)) {
-        next.delete(index)
+      if (next.has(eventKey)) {
+        next.delete(eventKey)
       } else {
-        next.add(index)
+        next.add(eventKey)
       }
       return next
     })
+  }
+  const [expandedRuns, setExpandedRuns] = useState(new Set())
+  const toggleRunExpansion = (runKey) => {
+    setExpandedRuns((prev) => {
+      const next = new Set(prev)
+      if (next.has(runKey)) {
+        next.delete(runKey)
+      } else {
+        next.add(runKey)
+      }
+      return next
+    })
+  }
+  const [historyFilters, setHistoryFilters] = useState({
+    standard: [],
+    outcome: [],
+    mode: [],
+    search: '',
+  })
+  const [historyLimit, setHistoryLimit] = useState(50)
+  const setHistoryFilter = (name, value) => {
+    setHistoryFilters((prev) => ({ ...prev, [name]: value }))
+    setHistoryLimit(50)
   }
   const isTenantView = viewMode === 'tenant'
   const isTemplateView = viewMode === 'template'
@@ -409,6 +557,13 @@ const Page = () => {
   })
 
   const catalog = definitionsApi.data ?? []
+  // A per-path deny queues an OBJECT deletion, so it only exists where the
+  // definition ships a delete executor (the detect-drift standards, where each
+  // path IS a policy). Ordinary standards get accept-only per-property actions -
+  // enforcing the baseline is the row-level Deny.
+  const supportsPathDeletion = (standardName) =>
+    !!catalog.find((entry) => entry.name === `${standardName}`.split('#')[0])
+      ?.delete
   const baselines = baselinesApi.data ?? []
   const standardAggregates = aggregateApi.data?.standards ?? []
   const tenant = {
@@ -761,10 +916,20 @@ const Page = () => {
       // sub-object as its own card (conditions.users, conditions.applications, ...)
       // instead of one unreadable JSON blob. Empty-vs-empty cards are skipped unless
       // the engine flagged drift there.
-      const getPath = (source, path) =>
-        path
+      // A literal property name wins over dot-path traversal: policy names routinely
+      // contain dots ("... - v3.0"), and splitting those would resolve to nothing.
+      const getPath = (source, path) => {
+        if (
+          source &&
+          typeof source === 'object' &&
+          Object.prototype.hasOwnProperty.call(source, path)
+        ) {
+          return source[path]
+        }
+        return path
           .split('.')
           .reduce((acc, key) => (acc == null ? acc : acc[key]), source)
+      }
       const isPlainObject = (value) =>
         value && typeof value === 'object' && !Array.isArray(value)
       const isEmptyish = (value) =>
@@ -855,220 +1020,6 @@ const Page = () => {
                 intended - nothing is compared or fixed until you edit one of
                 the baselines below.
               </Alert>
-            )}
-            <Typography
-              variant="caption"
-              sx={{
-                fontWeight: 600,
-                color: 'text.secondary',
-                textTransform: 'uppercase',
-                letterSpacing: 0.5,
-              }}
-            >
-              Expected vs Current
-            </Typography>
-            {row.currentValue ? (
-              <>
-                {unmatchedDiffEntries.map((entry) => {
-                  const acceptedPath = row.acceptedPaths?.[entry.Property]
-                  return (
-                    <Box
-                      key={entry.Property}
-                      sx={{
-                        p: 1.5,
-                        borderRadius: '12px',
-                        border: '1px solid',
-                        borderColor: acceptedPath ? 'divider' : 'error.main',
-                        bgcolor: 'background.paper',
-                      }}
-                    >
-                      <Stack
-                        direction="row"
-                        spacing={1}
-                        alignItems="center"
-                        justifyContent="space-between"
-                      >
-                        <Typography
-                          variant="subtitle2"
-                          sx={{ fontWeight: 600, fontFamily: 'monospace' }}
-                          noWrap
-                        >
-                          {entry.Property}
-                        </Typography>
-                        {acceptedPath ? (
-                          <Tooltip
-                            title={`${acceptedPath.reason} (${acceptedPath.by})`}
-                          >
-                            <Chip
-                              variant="outlined"
-                              size="small"
-                              color="info"
-                              label="Accepted"
-                            />
-                          </Tooltip>
-                        ) : (
-                          <Chip
-                            variant="outlined"
-                            size="small"
-                            color="error"
-                            label="Drift"
-                          />
-                        )}
-                      </Stack>
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          fontFamily: 'monospace',
-                          display: 'block',
-                          mt: 0.5,
-                          wordBreak: 'break-word',
-                        }}
-                      >
-                        Expected: {JSON.stringify(entry.ExpectedValue)}
-                      </Typography>
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          fontFamily: 'monospace',
-                          display: 'block',
-                          wordBreak: 'break-word',
-                          color: acceptedPath ? 'text.secondary' : 'error.main',
-                        }}
-                      >
-                        Current: {JSON.stringify(entry.ReceivedValue)}
-                      </Typography>
-                      {!acceptedPath && (
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          startIcon={<CheckCircle />}
-                          sx={{ mt: 1 }}
-                          onClick={() => {
-                            setAcceptPathTarget({
-                              ...row,
-                              path: entry.Property,
-                            })
-                            acceptPathDialog.handleOpen()
-                          }}
-                        >
-                          Accept this property only
-                        </Button>
-                      )}
-                    </Box>
-                  )
-                })}
-                {orderedCardPaths.map((key) => {
-                  const drifted = differences.includes(key)
-                  const acceptedPath = row.acceptedPaths?.[key]
-                  return (
-                    <Box
-                      key={key}
-                      sx={{
-                        p: 1.5,
-                        borderRadius: '12px',
-                        border: '1px solid',
-                        borderColor:
-                          drifted && !acceptedPath ? 'error.main' : 'divider',
-                        bgcolor: 'background.paper',
-                      }}
-                    >
-                      <Stack
-                        direction="row"
-                        spacing={1}
-                        alignItems="center"
-                        justifyContent="space-between"
-                      >
-                        <Typography
-                          variant="subtitle2"
-                          sx={{ fontWeight: 600, fontFamily: 'monospace' }}
-                          noWrap
-                        >
-                          {key}
-                        </Typography>
-                        {acceptedPath ? (
-                          <Tooltip
-                            title={`${acceptedPath.reason} (${acceptedPath.by})`}
-                          >
-                            <Chip
-                              variant="outlined"
-                              size="small"
-                              color="info"
-                              label="Accepted"
-                            />
-                          </Tooltip>
-                        ) : drifted ? (
-                          <Chip
-                            variant="outlined"
-                            size="small"
-                            color="error"
-                            label="Drift"
-                          />
-                        ) : (
-                          <Chip
-                            variant="outlined"
-                            size="small"
-                            color="success"
-                            label="OK"
-                          />
-                        )}
-                      </Stack>
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          fontFamily: 'monospace',
-                          display: 'block',
-                          mt: 0.5,
-                          wordBreak: 'break-word',
-                        }}
-                      >
-                        Expected:{' '}
-                        {JSON.stringify(getPath(row.expectedValue, key))}
-                      </Typography>
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          fontFamily: 'monospace',
-                          display: 'block',
-                          wordBreak: 'break-word',
-                          color: drifted ? 'error.main' : 'text.secondary',
-                        }}
-                      >
-                        Current:{' '}
-                        {JSON.stringify(getPath(row.currentValue, key))}
-                      </Typography>
-                      {drifted && !acceptedPath && (
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          startIcon={<CheckCircle />}
-                          sx={{ mt: 1 }}
-                          onClick={() => {
-                            setAcceptPathTarget({ ...row, path: key })
-                            acceptPathDialog.handleOpen()
-                          }}
-                        >
-                          Accept this property only
-                        </Button>
-                      )}
-                    </Box>
-                  )
-                })}
-                {(differences.length > 0 ||
-                  unmatchedDiffEntries.length > 0) && (
-                  <Typography variant="caption" color="text.secondary">
-                    Accepting a single property tolerates only that value -
-                    drift on any other property still raises a deviation.
-                  </Typography>
-                )}
-              </>
-            ) : (
-              <>
-                {jsonBox(row.expectedValue, true)}
-                <Typography variant="caption" color="text.secondary">
-                  No data has been collected for this standard yet - this is the
-                  configuration that will apply.
-                </Typography>
-              </>
             )}
             <Typography
               variant="caption"
@@ -1217,6 +1168,353 @@ const Page = () => {
               When multiple baselines configure the same standard, the baseline
               with the most specific assignment wins.
             </Typography>
+            <Typography
+              variant="caption"
+              sx={{
+                fontWeight: 600,
+                color: 'text.secondary',
+                textTransform: 'uppercase',
+                letterSpacing: 0.5,
+              }}
+            >
+              Expected vs Current
+            </Typography>
+            {row.currentValue ? (
+              <>
+                {unmatchedDiffEntries.map((entry) => {
+                  const acceptedPath = row.acceptedPaths?.[entry.Property]
+                  // Detect-drift cards reference a real policy in the tenant: show what
+                  // it is in plain language and offer to open it, instead of a blob.
+                  const policyRef =
+                    detectPolicySources[row.standardName] &&
+                    entry.ReceivedValue?.id
+                      ? entry.ReceivedValue
+                      : null
+                  return (
+                    <Box
+                      key={entry.Property}
+                      sx={{
+                        p: 1.5,
+                        borderRadius: '12px',
+                        border: '1px solid',
+                        borderColor: acceptedPath ? 'divider' : 'error.main',
+                        bgcolor: 'background.paper',
+                      }}
+                    >
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        alignItems="center"
+                        justifyContent="space-between"
+                      >
+                        <Typography
+                          variant="subtitle2"
+                          sx={{ fontWeight: 600, fontFamily: 'monospace' }}
+                          noWrap
+                        >
+                          {entry.Property}
+                        </Typography>
+                        {acceptedPath ? (
+                          <Tooltip
+                            title={`${acceptedPath.reason} (${acceptedPath.by})`}
+                          >
+                            <Chip
+                              variant="outlined"
+                              size="small"
+                              color={
+                                acceptedPath.verdict === 'denyDelete'
+                                  ? 'warning'
+                                  : 'info'
+                              }
+                              label={
+                                acceptedPath.verdict === 'denyDelete'
+                                  ? 'Delete Pending'
+                                  : 'Accepted'
+                              }
+                            />
+                          </Tooltip>
+                        ) : (
+                          <Chip
+                            variant="outlined"
+                            size="small"
+                            color="error"
+                            label="Drift"
+                          />
+                        )}
+                      </Stack>
+                      {policyRef ? (
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            display: 'block',
+                            mt: 0.5,
+                            color: acceptedPath
+                              ? 'text.secondary'
+                              : 'error.main',
+                          }}
+                        >
+                          {policyRef.status}
+                          {policyRef.policyType
+                            ? ` - ${policyRef.policyType}`
+                            : ''}
+                          {policyRef.state ? ` - ${policyRef.state}` : ''}
+                        </Typography>
+                      ) : (
+                        <>
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              fontFamily: 'monospace',
+                              display: 'block',
+                              mt: 0.5,
+                              wordBreak: 'break-word',
+                            }}
+                          >
+                            Expected: {JSON.stringify(entry.ExpectedValue)}
+                          </Typography>
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              fontFamily: 'monospace',
+                              display: 'block',
+                              wordBreak: 'break-word',
+                              color: acceptedPath
+                                ? 'text.secondary'
+                                : 'error.main',
+                            }}
+                          >
+                            Current: {JSON.stringify(entry.ReceivedValue)}
+                          </Typography>
+                        </>
+                      )}
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        sx={{ mt: 1 }}
+                        flexWrap="wrap"
+                        useFlexGap
+                      >
+                        {policyRef && (
+                          <LivePolicyView
+                            standardName={row.standardName}
+                            tenantFilter={row.tenantFilter}
+                            policyId={policyRef.id}
+                          />
+                        )}
+                        {!acceptedPath && (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<CheckCircle />}
+                            onClick={() => {
+                              setAcceptPathTarget({
+                                ...row,
+                                path: entry.Property,
+                              })
+                              acceptPathDialog.handleOpen()
+                            }}
+                          >
+                            Accept this property only
+                          </Button>
+                        )}
+                        {!acceptedPath &&
+                          supportsPathDeletion(row.standardName) && (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="error"
+                              startIcon={<RemoveCircle />}
+                              onClick={() => {
+                                setDenyPathTarget({
+                                  ...row,
+                                  path: entry.Property,
+                                })
+                                denyPathDialog.handleOpen()
+                              }}
+                            >
+                              Deny & queue deletion
+                            </Button>
+                          )}
+                      </Stack>
+                    </Box>
+                  )
+                })}
+                {orderedCardPaths.map((key) => {
+                  const drifted = differences.includes(key)
+                  const acceptedPath = row.acceptedPaths?.[key]
+                  // Detect-drift cards reference a real policy in the tenant: show what
+                  // it is in plain language and offer to open it, instead of a blob.
+                  const cardCurrent = getPath(row.currentValue, key)
+                  const policyRef =
+                    detectPolicySources[row.standardName] && cardCurrent?.id
+                      ? cardCurrent
+                      : null
+                  return (
+                    <Box
+                      key={key}
+                      sx={{
+                        p: 1.5,
+                        borderRadius: '12px',
+                        border: '1px solid',
+                        borderColor:
+                          drifted && !acceptedPath ? 'error.main' : 'divider',
+                        bgcolor: 'background.paper',
+                      }}
+                    >
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        alignItems="center"
+                        justifyContent="space-between"
+                      >
+                        <Typography
+                          variant="subtitle2"
+                          sx={{ fontWeight: 600, fontFamily: 'monospace' }}
+                          noWrap
+                        >
+                          {key}
+                        </Typography>
+                        {acceptedPath ? (
+                          <Tooltip
+                            title={`${acceptedPath.reason} (${acceptedPath.by})`}
+                          >
+                            <Chip
+                              variant="outlined"
+                              size="small"
+                              color={
+                                acceptedPath.verdict === 'denyDelete'
+                                  ? 'warning'
+                                  : 'info'
+                              }
+                              label={
+                                acceptedPath.verdict === 'denyDelete'
+                                  ? 'Delete Pending'
+                                  : 'Accepted'
+                              }
+                            />
+                          </Tooltip>
+                        ) : drifted ? (
+                          <Chip
+                            variant="outlined"
+                            size="small"
+                            color="error"
+                            label="Drift"
+                          />
+                        ) : (
+                          <Chip
+                            variant="outlined"
+                            size="small"
+                            color="success"
+                            label="OK"
+                          />
+                        )}
+                      </Stack>
+                      {policyRef ? (
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            display: 'block',
+                            mt: 0.5,
+                            color: drifted ? 'error.main' : 'text.secondary',
+                          }}
+                        >
+                          {policyRef.status}
+                          {policyRef.policyType
+                            ? ` - ${policyRef.policyType}`
+                            : ''}
+                          {policyRef.state ? ` - ${policyRef.state}` : ''}
+                        </Typography>
+                      ) : (
+                        <>
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              fontFamily: 'monospace',
+                              display: 'block',
+                              mt: 0.5,
+                              wordBreak: 'break-word',
+                            }}
+                          >
+                            Expected:{' '}
+                            {JSON.stringify(getPath(row.expectedValue, key))}
+                          </Typography>
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              fontFamily: 'monospace',
+                              display: 'block',
+                              wordBreak: 'break-word',
+                              color: drifted ? 'error.main' : 'text.secondary',
+                            }}
+                          >
+                            Current: {JSON.stringify(cardCurrent)}
+                          </Typography>
+                        </>
+                      )}
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        sx={{ mt: 1 }}
+                        flexWrap="wrap"
+                        useFlexGap
+                      >
+                        {policyRef && (
+                          <LivePolicyView
+                            standardName={row.standardName}
+                            tenantFilter={row.tenantFilter}
+                            policyId={policyRef.id}
+                          />
+                        )}
+                        {drifted && !acceptedPath && (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<CheckCircle />}
+                            onClick={() => {
+                              setAcceptPathTarget({ ...row, path: key })
+                              acceptPathDialog.handleOpen()
+                            }}
+                          >
+                            Accept this property only
+                          </Button>
+                        )}
+                        {drifted &&
+                          !acceptedPath &&
+                          supportsPathDeletion(row.standardName) && (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="error"
+                              startIcon={<RemoveCircle />}
+                              onClick={() => {
+                                setDenyPathTarget({ ...row, path: key })
+                                denyPathDialog.handleOpen()
+                              }}
+                            >
+                              Deny & queue deletion
+                            </Button>
+                          )}
+                      </Stack>
+                    </Box>
+                  )
+                })}
+                {(differences.length > 0 ||
+                  unmatchedDiffEntries.length > 0) && (
+                  <Typography variant="caption" color="text.secondary">
+                    Accepting a single property tolerates only that value -
+                    drift on any other property still raises a deviation.
+                  </Typography>
+                )}
+              </>
+            ) : (
+              <>
+                {jsonBox(row.expectedValue, true)}
+                <Typography variant="caption" color="text.secondary">
+                  No data has been collected for this standard yet - this is the
+                  configuration that will apply.
+                </Typography>
+              </>
+            )}
             {(row.manual?.taskName || row.manual?.instructions) && (
               <>
                 <Typography
@@ -1310,14 +1608,8 @@ const Page = () => {
                   <Chip
                     variant="outlined"
                     size="small"
-                    label={run.outcome}
-                    color={
-                      run.outcome === 'Compliant'
-                        ? 'success'
-                        : run.outcome === 'Remediated'
-                          ? 'info'
-                          : 'error'
-                    }
+                    label={outcomeTimeline[run.outcome]?.label ?? run.outcome}
+                    color={outcomeTimeline[run.outcome]?.chipColor ?? 'error'}
                   />
                 </Stack>
                 <Typography
@@ -1329,9 +1621,35 @@ const Page = () => {
                   {run.triggeredBy}
                   {run.remediated ? ', remediated' : ''}
                 </Typography>
+                {run.detail && (
+                  <Typography
+                    variant="caption"
+                    sx={{ display: 'block', mt: 0.5 }}
+                  >
+                    {run.detail}
+                  </Typography>
+                )}
                 <RunDetails diff={run.diff} />
               </Box>
             ))}
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<Visibility />}
+              sx={{ alignSelf: 'flex-start' }}
+              onClick={() => {
+                setHistoryFilters({
+                  standard: row.standardLabel ? [row.standardLabel] : [],
+                  outcome: [],
+                  mode: [],
+                  search: '',
+                })
+                setHistoryLimit(50)
+                setViewMode('history')
+              }}
+            >
+              View full history
+            </Button>
           </Stack>
         </Stack>
       )
@@ -1365,6 +1683,32 @@ const Page = () => {
               : 'None',
           },
         ])}
+        {/* A single point is just today's live score (already listed above) - the
+            chart earns its space once there is an actual line to draw. */}
+        {Array.isArray(row.trend) && row.trend.length > 1 && (
+          <Box sx={{ px: 2, pt: 2 }}>
+            <CippChartCard
+              title="Compliance Trend"
+              chartType="area"
+              chartSeries={[
+                {
+                  name: 'Compliant with accepted deviations',
+                  data: row.trend.map((point) => ({
+                    x: point.date,
+                    y: point.aligned,
+                  })),
+                },
+                {
+                  name: 'Compliant with baseline',
+                  data: row.trend.map((point) => ({
+                    x: point.date,
+                    y: point.verified,
+                  })),
+                },
+              ]}
+            />
+          </Box>
+        )}
         <Stack spacing={1.5} sx={{ p: 2 }}>
           <Typography
             variant="caption"
@@ -2028,6 +2372,27 @@ const Page = () => {
           row={acceptPathTarget}
         />
       )}
+      {denyPathTarget && (
+        <CippApiDialog
+          createDialog={denyPathDialog}
+          title="Deny Deviation - Queue Deletion"
+          fields={[{ type: 'textField', name: 'reason', label: 'Reason' }]}
+          api={{
+            url: '/api/ExecUpdateBaselineDeviation',
+            type: 'POST',
+            data: {
+              action: '!DenyPath',
+              tenantFilter: 'tenantFilter',
+              standard: 'standardName',
+              path: 'path',
+            },
+            confirmText:
+              'Deny [path] of [standardLabel]? It shows as Delete Pending and is DELETED from the tenant on the next remediation run. Only this object is deleted - other deviations are untouched. This cannot be undone.',
+            relatedQueryKeys,
+          }}
+          row={denyPathTarget}
+        />
+      )}
       {removeOverrideTarget && (
         <CippApiDialog
           createDialog={removeOverrideDialog}
@@ -2050,11 +2415,73 @@ const Page = () => {
     </>
   )
 
-  // Historic view: the tenant's run events on an activity timeline (same pattern as the
-  // manage-tenant history page). Each event carries its run GUID; View Logs opens the
-  // Baselines log drawer filtered to exactly that run's entries.
+  // Historic view: every recorded baseline event for the tenant on an activity
+  // timeline (same pattern as the manage-tenant history page). Engine runs touch
+  // many standards under one run GUID, so those group into a collapsible summary
+  // entry; operator events (triage, overrides, stage changes, deletions) stand on
+  // their own. View Logs opens the Baselines log drawer filtered to one run.
   if (viewMode === 'history') {
     const historyEvents = historyApi.data?.events ?? []
+    const standardOptions = [
+      ...new Set(historyEvents.map((event) => event.standardLabel)),
+    ]
+      .filter(Boolean)
+      .sort()
+      .map((value) => ({ label: value, value }))
+    const outcomeOptions = [
+      ...new Set(historyEvents.map((event) => event.outcome)),
+    ]
+      .filter(Boolean)
+      .sort()
+      .map((value) => ({
+        label: outcomeTimeline[value]?.label ?? value,
+        value,
+      }))
+    const modeOptions = [...new Set(historyEvents.map((event) => event.mode))]
+      .filter(Boolean)
+      .map((value) => ({ label: runModeLabels[value] ?? value, value }))
+    const searchTerm = historyFilters.search.trim().toLowerCase()
+    const filteredEvents = historyEvents.filter(
+      (event) =>
+        (historyFilters.standard.length === 0 ||
+          historyFilters.standard.includes(event.standardLabel)) &&
+        (historyFilters.outcome.length === 0 ||
+          historyFilters.outcome.includes(event.outcome)) &&
+        (historyFilters.mode.length === 0 ||
+          historyFilters.mode.includes(event.mode)) &&
+        (!searchTerm ||
+          `${event.standardLabel} ${event.outcome} ${event.detail ?? ''} ${event.triggeredBy}`
+            .toLowerCase()
+            .includes(searchTerm))
+    )
+    // Group by run GUID (newest-first order preserved); multi-event groups render
+    // as one collapsible summary. Flattening to render rows up front lets the
+    // timeline connector stop at the true last item.
+    const runGroups = []
+    const groupIndex = new Map()
+    for (const event of filteredEvents) {
+      const key = String(event.runId ?? 'unknown')
+      if (groupIndex.has(key)) {
+        runGroups[groupIndex.get(key)].events.push(event)
+      } else {
+        groupIndex.set(key, runGroups.length)
+        runGroups.push({ runId: key, events: [event] })
+      }
+    }
+    const visibleGroups = runGroups.slice(0, historyLimit)
+    const renderRows = []
+    for (const group of visibleGroups) {
+      if (group.events.length === 1) {
+        renderRows.push({ type: 'event', event: group.events[0] })
+      } else {
+        renderRows.push({ type: 'group', group })
+        if (expandedRuns.has(group.runId)) {
+          for (const event of group.events) {
+            renderRows.push({ type: 'event', event })
+          }
+        }
+      }
+    }
     return (
       <>
         <CippHead title={pageTitle} />
@@ -2075,9 +2502,95 @@ const Page = () => {
               />
             </Stack>
             <Typography variant="body1" color="text.secondary">
-              This timeline shows every recorded baseline run event for{' '}
-              {tenant.displayName}.
+              This timeline shows every recorded baseline event for{' '}
+              {tenant.displayName} - runs, operator decisions, stage changes,
+              and deletions.
             </Typography>
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  fullWidth
+                  label="Search Events"
+                  value={historyFilters.search}
+                  onChange={(event) =>
+                    setHistoryFilter('search', event.target.value)
+                  }
+                  autoComplete="off"
+                  placeholder="Search by standard, outcome, or operator..."
+                  InputProps={{
+                    startAdornment: (
+                      <Search sx={{ mr: 1, color: 'text.secondary' }} />
+                    ),
+                  }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <CippAutoComplete
+                  fullWidth
+                  multiple={true}
+                  creatable={false}
+                  label="Standard"
+                  placeholder="All standards"
+                  options={standardOptions}
+                  value={historyFilters.standard.map((value) => ({
+                    label: value,
+                    value,
+                  }))}
+                  onChange={(newValue) =>
+                    setHistoryFilter(
+                      'standard',
+                      Array.isArray(newValue)
+                        ? newValue.map((option) => option.value)
+                        : []
+                    )
+                  }
+                />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6, md: 2.5 }}>
+                <CippAutoComplete
+                  fullWidth
+                  multiple={true}
+                  creatable={false}
+                  label="Outcome"
+                  placeholder="All outcomes"
+                  options={outcomeOptions}
+                  value={historyFilters.outcome.map((value) => ({
+                    label: outcomeTimeline[value]?.label ?? value,
+                    value,
+                  }))}
+                  onChange={(newValue) =>
+                    setHistoryFilter(
+                      'outcome',
+                      Array.isArray(newValue)
+                        ? newValue.map((option) => option.value)
+                        : []
+                    )
+                  }
+                />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6, md: 2.5 }}>
+                <CippAutoComplete
+                  fullWidth
+                  multiple={true}
+                  creatable={false}
+                  label="Event Type"
+                  placeholder="All event types"
+                  options={modeOptions}
+                  value={historyFilters.mode.map((value) => ({
+                    label: runModeLabels[value] ?? value,
+                    value,
+                  }))}
+                  onChange={(newValue) =>
+                    setHistoryFilter(
+                      'mode',
+                      Array.isArray(newValue)
+                        ? newValue.map((option) => option.value)
+                        : []
+                    )
+                  }
+                />
+              </Grid>
+            </Grid>
             {historyApi.isFetching && (
               <Box display="flex" justifyContent="center" py={4}>
                 <CircularProgress />
@@ -2089,7 +2602,14 @@ const Page = () => {
                 first.
               </Alert>
             )}
-            {historyEvents.length > 0 && (
+            {!historyApi.isFetching &&
+              historyEvents.length > 0 &&
+              filteredEvents.length === 0 && (
+                <Alert severity="info">
+                  No events match the current filters.
+                </Alert>
+              )}
+            {renderRows.length > 0 && (
               <Card sx={{ mr: 2 }}>
                 <CardContent>
                   <Timeline
@@ -2101,21 +2621,203 @@ const Page = () => {
                       [`& .MuiTimelineContent-root`]: { flex: 0.8 },
                     }}
                   >
-                    {historyEvents.map((event, index) => {
+                    {renderRows.map((row, index) => {
+                      // Collapsed engine run: one summary entry with per-outcome
+                      // counts; expanding reveals the individual standards below.
+                      if (row.type === 'group') {
+                        const group = row.group
+                        const first = group.events[0]
+                        const groupDate = parseCippDate(first.timestamp)
+                        const outcomeCounts = {}
+                        for (const groupEvent of group.events) {
+                          outcomeCounts[groupEvent.outcome] =
+                            (outcomeCounts[groupEvent.outcome] ?? 0) + 1
+                        }
+                        const severityRank = {
+                          error: 4,
+                          warning: 3,
+                          info: 2,
+                          success: 1,
+                        }
+                        const dotColor = group.events.reduce(
+                          (worst, groupEvent) => {
+                            const color =
+                              outcomeTimeline[groupEvent.outcome]?.color ??
+                              'grey'
+                            return (severityRank[color] ?? 0) >
+                              (severityRank[worst] ?? 0)
+                              ? color
+                              : worst
+                          },
+                          'grey'
+                        )
+                        const isOpen = expandedRuns.has(group.runId)
+                        const alertedCount = group.events.filter(
+                          (groupEvent) => groupEvent.alerted
+                        ).length
+                        return (
+                          <TimelineItem key={`group-${group.runId}`}>
+                            <TimelineOppositeContent
+                              sx={{ m: 'auto 0', minWidth: 100, maxWidth: 100 }}
+                              align="right"
+                              variant="body2"
+                              color="text.secondary"
+                            >
+                              <Typography
+                                variant="caption"
+                                display="block"
+                                fontSize="0.7rem"
+                              >
+                                {groupDate.toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric',
+                                })}
+                              </Typography>
+                              <Typography
+                                variant="caption"
+                                display="block"
+                                fontWeight="bold"
+                                fontSize="0.75rem"
+                              >
+                                {groupDate.toLocaleTimeString('en-US', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  hour12: false,
+                                })}
+                              </Typography>
+                            </TimelineOppositeContent>
+                            <TimelineSeparator>
+                              <TimelineDot
+                                color={dotColor}
+                                variant="outlined"
+                                size="small"
+                              >
+                                {first.mode === 'compare' ? (
+                                  <Compare />
+                                ) : (
+                                  <PlayArrow />
+                                )}
+                              </TimelineDot>
+                              {index < renderRows.length - 1 && (
+                                <TimelineConnector />
+                              )}
+                            </TimelineSeparator>
+                            <TimelineContent sx={{ py: '8px', px: 2 }}>
+                              <Stack spacing={1}>
+                                <Box
+                                  display="flex"
+                                  alignItems="center"
+                                  gap={1}
+                                  flexWrap="wrap"
+                                >
+                                  <Chip
+                                    label={
+                                      runModeLabels[first.mode] ?? first.mode
+                                    }
+                                    size="small"
+                                    variant="outlined"
+                                    sx={{ fontSize: '0.7rem', height: 20 }}
+                                  />
+                                  <Tooltip title={group.runId}>
+                                    <Chip
+                                      label={`Run ${String(group.runId).slice(0, 8)}`}
+                                      size="small"
+                                      variant="outlined"
+                                      sx={{ fontSize: '0.7rem', height: 20 }}
+                                    />
+                                  </Tooltip>
+                                  {Object.entries(outcomeCounts).map(
+                                    ([outcome, count]) => (
+                                      <Chip
+                                        key={outcome}
+                                        label={`${count} ${outcomeTimeline[outcome]?.label ?? outcome}`}
+                                        color={
+                                          outcomeTimeline[outcome]?.chipColor ??
+                                          'default'
+                                        }
+                                        size="small"
+                                        variant="outlined"
+                                        sx={{ fontSize: '0.7rem', height: 20 }}
+                                      />
+                                    )
+                                  )}
+                                  {alertedCount > 0 && (
+                                    <Chip
+                                      label={`${alertedCount} alert${alertedCount === 1 ? '' : 's'} sent`}
+                                      color="warning"
+                                      size="small"
+                                      variant="outlined"
+                                      sx={{ fontSize: '0.7rem', height: 20 }}
+                                    />
+                                  )}
+                                </Box>
+                                <Typography
+                                  variant="body2"
+                                  fontWeight="medium"
+                                  sx={{ fontSize: '0.875rem' }}
+                                >
+                                  Processed {group.events.length} standards in
+                                  this run
+                                </Typography>
+                                <Box display="flex" alignItems="center" gap={2}>
+                                  <Link
+                                    component="button"
+                                    variant="caption"
+                                    onClick={() =>
+                                      toggleRunExpansion(group.runId)
+                                    }
+                                    sx={{
+                                      textAlign: 'left',
+                                      fontSize: '0.75rem',
+                                    }}
+                                  >
+                                    {isOpen
+                                      ? 'Hide the individual standards'
+                                      : `View all ${group.events.length} standards`}
+                                  </Link>
+                                  <CippApiLogsDrawer
+                                    baselineRunFilter={group.runId}
+                                    tenantFilter={currentTenant}
+                                    buttonText="View Logs"
+                                    title={`Run ${String(group.runId).slice(0, 8)} - Logs`}
+                                    size="small"
+                                    sx={{
+                                      fontSize: '0.75rem',
+                                      p: 0,
+                                      minWidth: 0,
+                                      textTransform: 'none',
+                                    }}
+                                  />
+                                </Box>
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{ fontSize: '0.7rem' }}
+                                >
+                                  Triggered by {first.triggeredBy}
+                                </Typography>
+                              </Stack>
+                            </TimelineContent>
+                          </TimelineItem>
+                        )
+                      }
+                      const event = row.event
                       const timelineConfig = outcomeTimeline[event.outcome] ?? {
                         color: 'grey',
                         chipColor: 'default',
                         icon: <InfoOutlined />,
                       }
                       const eventDate = parseCippDate(event.timestamp)
-                      const isExpanded = expandedEvents.has(index)
+                      const eventKey = `${event.runId}-${event.standardName}-${event.outcome}-${event.timestamp}`
+                      const isExpanded = expandedEvents.has(eventKey)
                       const diffEntries = event.diff
                         ? Array.isArray(event.diff)
                           ? event.diff
                           : [event.diff]
                         : []
                       return (
-                        <TimelineItem key={`${event.runId}-${index}`}>
+                        <TimelineItem key={`${eventKey}-${index}`}>
                           <TimelineOppositeContent
                             sx={{ m: 'auto 0', minWidth: 100, maxWidth: 100 }}
                             align="right"
@@ -2154,7 +2856,7 @@ const Page = () => {
                             >
                               {timelineConfig.icon}
                             </TimelineDot>
-                            {index < historyEvents.length - 1 && (
+                            {index < renderRows.length - 1 && (
                               <TimelineConnector />
                             )}
                           </TimelineSeparator>
@@ -2189,6 +2891,15 @@ const Page = () => {
                                     sx={{ fontSize: '0.7rem', height: 20 }}
                                   />
                                 </Tooltip>
+                                {event.alerted && (
+                                  <Chip
+                                    label="Alert sent"
+                                    color="warning"
+                                    size="small"
+                                    variant="outlined"
+                                    sx={{ fontSize: '0.7rem', height: 20 }}
+                                  />
+                                )}
                               </Box>
                               <Box>
                                 <Typography
@@ -2207,7 +2918,9 @@ const Page = () => {
                                   <Link
                                     component="button"
                                     variant="caption"
-                                    onClick={() => toggleEventExpansion(index)}
+                                    onClick={() =>
+                                      toggleEventExpansion(eventKey)
+                                    }
                                     sx={{
                                       textAlign: 'left',
                                       fontSize: '0.75rem',
@@ -2278,6 +2991,15 @@ const Page = () => {
                   </Timeline>
                 </CardContent>
               </Card>
+            )}
+            {runGroups.length > historyLimit && (
+              <Button
+                variant="outlined"
+                sx={{ alignSelf: 'center' }}
+                onClick={() => setHistoryLimit((prev) => prev + 50)}
+              >
+                Load more (showing {historyLimit} of {runGroups.length} entries)
+              </Button>
             )}
             {dialogs}
           </Stack>

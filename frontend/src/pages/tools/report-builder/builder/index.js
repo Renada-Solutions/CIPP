@@ -24,6 +24,7 @@ import {
 import { Grid, Stack, Box } from '@mui/system'
 import { Layout as DashboardLayout } from '../../../../layouts/index.js'
 import { useSettings } from '../../../../hooks/use-settings'
+import { useBrandingSettings } from '../../../../components/CippPdf/useBrandingSettings'
 import { ApiGetCall, ApiPostCall } from '../../../../api/ApiCall.jsx'
 import { useForm, useWatch } from 'react-hook-form'
 import CippFormComponent from '../../../../components/CippComponents/CippFormComponent'
@@ -796,7 +797,7 @@ const Page = () => {
   const router = useRouter()
   const settings = useSettings()
   const { currentTenant } = settings
-  const brandingSettings = settings.customBranding
+  const brandingSettings = useBrandingSettings()
 
   /* ── Deeplink: load template by ID from URL ── */
   const [templateId, setTemplateId] = useState(null)
@@ -1594,7 +1595,7 @@ const Page = () => {
                     isFetching={brandingPresetsApi.isFetching}
                   />
                 </Grid>
-                <Grid size={{ xs: 6, md: 2 }}>
+                <Grid size={{ xs: 12, md: 2 }}>
                   <CippFormComponent
                     type="autoComplete"
                     name="size"
@@ -1606,7 +1607,7 @@ const Page = () => {
                     options={PAGE_SIZES}
                   />
                 </Grid>
-                <Grid size={{ xs: 6, md: 2 }}>
+                <Grid size={{ xs: 12, md: 2 }}>
                   <CippFormComponent
                     type="autoComplete"
                     name="orientation"

@@ -1,6 +1,6 @@
 {
   "name": "cipp",
-  "version": "10.7.5",
+  "version": "10.8.5",
   "author": "CIPP Contributors",
   "homepage": "https://cipp.app/",
   "bugs": {
@@ -8,7 +8,7 @@
   },
   "license": "AGPL-3.0",
   "engines": {
-    "node": "^22.13.0"
+    "node": "^22.22.2"
   },
   "repository": {
     "type": "git",
@@ -55,14 +55,14 @@
     "@tanstack/react-query-devtools": "^5.101.2",
     "@tanstack/react-query-persist-client": "^5.101.2",
     "@tanstack/react-table": "^8.19.2",
-    "@tiptap/core": "^3.27.3",
+    "@tiptap/core": "^3.29.2",
     "@tiptap/extension-heading": "^3.27.3",
     "@tiptap/extension-table": "^3.20.5",
-    "@tiptap/pm": "^3.27.3",
+    "@tiptap/pm": "^3.29.2",
     "@tiptap/react": "^3.20.5",
     "@tiptap/starter-kit": "^3.20.5",
     "@vvo/tzdb": "^6.198.0",
-    "apexcharts": "5.16.0",
+    "apexcharts": "6.6.1",
     "axios": "1.18.1",
     "date-fns": "4.4.0",
     "diff": "^9.0.0",
@@ -115,6 +115,7 @@
     "simplebar": "6.3.3",
     "simplebar-react": "3.3.2",
     "stylis-plugin-rtl": "2.1.1",
+    "swagger-ui-dist": "5.32.12",
     "unified": "^11.0.5",
     "yup": "1.7.1"
   },

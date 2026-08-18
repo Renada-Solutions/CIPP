@@ -21,6 +21,13 @@ vi.mock('../../src/api/ApiCall', () => ({
   },
 }))
 
+// the gate page hosts the entire setup wizard via next/dynamic - the routing
+// decision is what's under test here, so stand in a marker for it. the non-admin
+// hold page is light enough to render for real.
+vi.mock('../../src/components/CippComponents/SetupGatePage.jsx', () => ({
+  default: () => <div>setup gate wizard</div>,
+}))
+
 // full react-query result shape PrivateRoute reads
 const result = (overrides = {}) => ({
   isLoading: false,
@@ -75,6 +82,26 @@ describe('PrivateRoute', () => {
     // no identity means nothing was denied
     expect(screen.queryByText('Access Denied')).not.toBeInTheDocument()
     expect(screen.queryByText('app content')).not.toBeInTheDocument()
+  })
+
+  it('shows the server explanation when a signed-in identity is denied (e.g. IP blocked)', async () => {
+    // real SWA session, but CIPP refused the caller and said why - the wording must
+    // surface instead of the misleading "session expired" prompt
+    authState.swa = result({ data: swaPrincipal() })
+    authState.me = result({
+      data: {
+        clientPrincipal: null,
+        permissions: [],
+        message: 'Your IP address (203.0.113.7) is not in the allowed range for your role(s)',
+      },
+    })
+    renderRoute()
+
+    await waitFor(() => {
+      expect(screen.getByText(/not in the allowed range/)).toBeInTheDocument()
+    })
+    expect(screen.getByText('Access Denied')).toBeInTheDocument()
+    expect(screen.queryByText('Sign in to CIPP')).not.toBeInTheDocument()
   })
 
   it('shows the sign-in page when the session has no identity in either shape', async () => {
@@ -160,6 +187,56 @@ describe('PrivateRoute', () => {
     authState.me = result({ data: cippPrincipal(['anonymous', 'authenticated', 'admin']) })
     renderRoute('admin')
     expect(screen.getByText('app content')).toBeInTheDocument()
+  })
+
+  it('blocks admins behind the setup wizard while initial setup is incomplete', () => {
+    authState.swa = result({ data: swaPrincipal() })
+    authState.me = result({
+      data: {
+        ...cippPrincipal(['anonymous', 'authenticated', 'admin']),
+        initialSetupComplete: false,
+        samAppPresent: false,
+      },
+    })
+    renderRoute()
+
+    expect(screen.getByText('setup gate wizard')).toBeInTheDocument()
+    expect(screen.queryByText('app content')).not.toBeInTheDocument()
+  })
+
+  it('holds non-admins on the pending page while initial setup is incomplete', () => {
+    authState.swa = result({ data: swaPrincipal() })
+    authState.me = result({
+      data: {
+        ...cippPrincipal(['anonymous', 'authenticated', 'editor']),
+        initialSetupComplete: false,
+        samAppPresent: false,
+      },
+    })
+    renderRoute()
+
+    expect(screen.getByText('CIPP is being set up')).toBeInTheDocument()
+    expect(screen.getByText('Sign out')).toBeInTheDocument()
+    expect(screen.queryByText('setup gate wizard')).not.toBeInTheDocument()
+    expect(screen.queryByText('app content')).not.toBeInTheDocument()
+  })
+
+  it('lets everyone through once initial setup is complete or unreported', () => {
+    authState.swa = result({ data: swaPrincipal() })
+    authState.me = result({
+      data: {
+        ...cippPrincipal(['anonymous', 'authenticated', 'editor']),
+        initialSetupComplete: true,
+        samAppPresent: true,
+      },
+    })
+    renderRoute()
+    expect(screen.getByText('app content')).toBeInTheDocument()
+
+    // absent field (older api, early-return /api/me shapes) must never gate
+    authState.me = result({ data: cippPrincipal(['anonymous', 'authenticated', 'editor']) })
+    renderRoute()
+    expect(screen.getAllByText('app content').length).toBeGreaterThan(0)
   })
 
   it('stays latched unauthenticated while the session refetches', async () => {
