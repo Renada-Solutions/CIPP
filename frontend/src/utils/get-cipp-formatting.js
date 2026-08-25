@@ -64,7 +64,11 @@ export const getCippFormatting = (
   cellName,
   type,
   canReceive,
-  flatten = true
+  flatten = true,
+  // Optional row context supplied by the data table, used only by the
+  // primary-column link at the very end of this function. Every text-mode
+  // caller (sorting, search, CSV, PDF) omits it.
+  rowContext = null
 ) => {
   const isText = type === 'text'
   const cellNameLower = cellName.toLowerCase()
@@ -1509,6 +1513,28 @@ export const getCippFormatting = (
         tableTitle={getCippTranslation(cellName)}
       />
     )
+  }
+
+  // A record's primary column links straight to its page in CIPP, so the row
+  // menu is not the only way in. This sits last in the chain deliberately:
+  // every specialised formatter above has already returned by now, so chips,
+  // dates, booleans, portal_* icons, cippLink, http URLs, chip lists and
+  // "N items" buttons can never end up wrapped in an anchor, and no exclusion
+  // list has to be maintained as formatters are added. See get-cipp-link.js.
+  if (
+    !isText &&
+    rowContext?.resolveRowLink &&
+    data !== null &&
+    data !== undefined
+  ) {
+    const href = rowContext.resolveRowLink(rowContext.row, cellName)
+    if (href) {
+      return (
+        <Link component={NextLink} href={href} underline="hover">
+          {data}
+        </Link>
+      )
+    }
   }
 
   // Default case: return data as-is

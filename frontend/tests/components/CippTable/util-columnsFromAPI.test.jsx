@@ -101,3 +101,31 @@ describe('resolveSimpleColumnVariables', () => {
     expect(result).toEqual(['cippuserschema'])
   })
 })
+
+describe('utilColumnsFromAPI row link options', () => {
+  it('row link options do not change accessor output', () => {
+    const data = [{ displayName: 'Alice', info: { city: 'Seattle' } }]
+    const plain = utilColumnsFromAPI(data)
+    const linked = utilColumnsFromAPI(data, { resolveRowLink: () => '/x' })
+    for (const column of plain) {
+      const match = linked.find((c) => c.id === column.id)
+      expect(match.accessorFn(data[0])).toEqual(column.accessorFn(data[0]))
+    }
+  })
+
+  // Column widths are measured from text-mode output, which the link never
+  // touches, so sizing must be identical whether or not links are resolving.
+  it('row link options do not change column sizing', () => {
+    const data = [
+      { displayName: 'Alice Smith', mail: 'alice@contoso.com' },
+      { displayName: 'Bob Johnson', mail: 'bob@contoso.com' },
+    ]
+    const plain = utilColumnsFromAPI(data)
+    const linked = utilColumnsFromAPI(data, { resolveRowLink: () => '/x' })
+    for (const column of plain) {
+      const match = linked.find((c) => c.id === column.id)
+      expect(match.size).toBe(column.size)
+      expect(match.minSize).toBe(column.minSize)
+    }
+  })
+})

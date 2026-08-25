@@ -229,7 +229,9 @@ const mergeKeys = (dataArray) => {
 // Scanning the full dataset is O(n * columns) and dominates render time on large tables.
 const MAX_FILTER_SAMPLE = 50
 
-export const utilColumnsFromAPI = (dataArray) => {
+// options.resolveRowLink: (row, cellName) => href | null. Supplied by
+// CippDataTable so the primary-identity cell can link to the record's page.
+export const utilColumnsFromAPI = (dataArray, options = {}) => {
   // Add safety check for dataArray
   if (!dataArray || !Array.isArray(dataArray) || dataArray.length === 0) {
     return []
@@ -299,7 +301,10 @@ export const utilColumnsFromAPI = (dataArray) => {
           }),
           Cell: ({ row }) => {
             const value = resolveValue(row.original)
-            return getCippFormatting(value, accessorKey)
+            return getCippFormatting(value, accessorKey, undefined, undefined, true, {
+              row: row.original,
+              resolveRowLink: options.resolveRowLink,
+            })
           },
         }
 

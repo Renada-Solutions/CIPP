@@ -27,6 +27,11 @@ import { CippOffCanvas } from '../CippComponents/CippOffCanvas'
 import { useDialog } from '../../hooks/use-dialog'
 import { CippApiDialog } from '../CippComponents/CippApiDialog'
 import { getCippError } from '../../utils/get-cipp-error'
+import {
+  getCippRowLink,
+  normalizeRowLink,
+  pickPrimaryColumn,
+} from '../../utils/get-cipp-link'
 import { Box, Stack } from '@mui/system'
 import { useSettings } from '../../hooks/use-settings'
 import { parseCippDate } from '../../utils/parse-cipp-date'
@@ -469,6 +474,10 @@ export const CippDataTable = (props) => {
     subTables = EMPTY_ARRAY,
     persistenceKey,
     parentRow,
+    // Controls the in-cell link on the row's primary identity column. Omitted,
+    // the column and href are derived from this table's own actions; pass false
+    // to opt out, or a column name / { column, actionLabel, href } to override.
+    rowLink,
   } = props
 
   // Create a map of column IDs to their filterType for quick lookup
@@ -644,6 +653,34 @@ export const CippDataTable = (props) => {
     queryKey,
   ])
 
+  // Latest-value ref for the primary-column link. Actions arrays are rebuilt on
+  // every render and their permission conditions resolve asynchronously, so the
+  // resolver baked into the column defs reads through this ref rather than
+  // closing over a snapshot — that keeps it stable and avoids regenerating
+  // columns whenever an action changes identity.
+  const rowLinkContextRef = useRef({})
+  rowLinkContextRef.current = {
+    ...rowLinkContextRef.current,
+    enabled: settings?.tableRowLinks === true && rowLink !== false && !simple,
+    override: normalizeRowLink(rowLink),
+    actions,
+    currentTenant: settings?.currentTenant,
+    parentRow,
+  }
+
+  // Rows are parent-attached first, exactly as getActionRow does for the row
+  // menu, so a nested table's link resolves [parent.*] tokens and inherits the
+  // parent's tenant the same way clicking the matching action would.
+  const resolveRowLink = useCallback(
+    (row, cellName) =>
+      getCippRowLink(
+        attachParentRow(row, rowLinkContextRef.current.parentRow),
+        cellName,
+        rowLinkContextRef.current
+      ),
+    []
+  )
+
   // Derive columns from data — only when the data schema actually changes.
   useEffect(() => {
     if (
@@ -663,7 +700,7 @@ export const CippDataTable = (props) => {
     }
     prevSchemaKeyRef.current = schemaKey
 
-    const apiColumns = utilColumnsFromAPI(usedData)
+    const apiColumns = utilColumnsFromAPI(usedData, { resolveRowLink })
 
     // Apply custom filterFn to columns that have filterType === 'equal'
     const enhancedApiColumns = apiColumns.map((col) => {
@@ -757,6 +794,13 @@ export const CippDataTable = (props) => {
         }
       }
     }
+    // The linked column has to be one the table actually shows, so resolve it
+    // here where the visible set is finally known.
+    rowLinkContextRef.current.primaryColumn = pickPrimaryColumn(
+      Object.keys(newVisibility).filter((key) => newVisibility[key]),
+      rowLinkContextRef.current.override
+    )
+
     if (defaultSorting?.length > 0) {
       setSorting(defaultSorting)
     }

@@ -4,6 +4,7 @@ import { fn, within, expect, userEvent, waitFor } from 'storybook/test'
 import { CippDataTable } from '../../../src/components/CippTable/CippDataTable'
 import { SettingsProvider } from '../../../src/contexts/settings-context'
 import { Delete, Edit, Visibility, Block, CheckCircle } from '@mui/icons-material'
+import { getIntuneDeviceActions } from '../../../src/components/CippComponents/CippIntuneDeviceActions'
 
 const generateLargeDataset = (count = 10000) => {
   const firstNames = [
@@ -514,6 +515,221 @@ export const CachedReportColumns = {
     await step('cell shows the cached value, no nested table button', async () => {
       await expect(canvas.getByText('Jane, Bob')).toBeVisible()
       expect(canvas.queryByRole('button', { name: 'View members' })).toBeNull()
+    })
+  },
+}
+
+// tableRowLinks is opt-in, so the row-link stories seed the preference the way a
+// user who enabled it would. SettingsProvider reads localStorage on mount, so
+// this has to land before the story renders.
+const setRowLinksPreference = (value) => {
+  const existing = JSON.parse(window.localStorage.getItem('app.settings') || '{}')
+  window.localStorage.setItem(
+    'app.settings',
+    JSON.stringify({ ...existing, tableRowLinks: value })
+  )
+}
+
+const enableRowLinks = () => setRowLinksPreference(true)
+const disableRowLinks = () => setRowLinksPreference(false)
+
+
+// The primary identity column links to the record's own page, derived from the
+// table's existing "View ..." action. jsdom cannot cover this: MRT virtualizes
+// the body and needs a real layout engine to render cells at all.
+const rowLinkData = [
+  { id: 'u-1', displayName: 'Alice Smith', userPrincipalName: 'alice@contoso.com' },
+  { id: 'u-2', displayName: 'Bob Johnson', userPrincipalName: 'bob@contoso.com' },
+]
+
+const viewUserAction = {
+  label: 'View User',
+  link: '/identity/administration/users/user?userId=[id]',
+  icon: <Visibility />,
+}
+
+export const RowLinkFromActions = {
+  beforeEach: enableRowLinks,
+  args: {
+    title: 'Row Links',
+    data: rowLinkData,
+    actions: [viewUserAction, { label: 'Delete User', type: 'POST', url: '/api/RemoveUser' }],
+    simpleColumns: ['displayName', 'userPrincipalName'],
+  },
+  play: async ({ canvasElement, step }) => {
+    const canvas = within(canvasElement)
+
+    await step('display name links to the user page', async () => {
+      const link = await canvas.findByRole('link', { name: 'Alice Smith' })
+      await expect(link).toHaveAttribute(
+        'href',
+        '/identity/administration/users/user?userId=u-1'
+      )
+    })
+
+    await step('only the primary column links', async () => {
+      await expect(canvas.queryByRole('link', { name: 'alice@contoso.com' })).toBeNull()
+      await expect(await canvas.findByRole('link', { name: 'Bob Johnson' })).toHaveAttribute(
+        'href',
+        '/identity/administration/users/user?userId=u-2'
+      )
+    })
+  },
+}
+
+export const RowLinkSkippedWhenUnresolvable = {
+  beforeEach: enableRowLinks,
+  args: {
+    title: 'Row Links (missing id)',
+    // no id on the row, so the [id] token cannot resolve
+    data: [{ displayName: 'Alice Smith', userPrincipalName: 'alice@contoso.com' }],
+    actions: [viewUserAction],
+    simpleColumns: ['displayName', 'userPrincipalName'],
+  },
+  play: async ({ canvasElement, step }) => {
+    const canvas = within(canvasElement)
+    await step('renders plain text rather than a broken [id] URL', async () => {
+      await waitFor(() => {
+        expect(canvasElement.textContent).toContain('Alice Smith')
+      })
+      await expect(canvas.queryByRole('link', { name: 'Alice Smith' })).toBeNull()
+      expect(canvasElement.textContent).not.toContain('[id]')
+    })
+  },
+}
+
+export const RowLinkOptOut = {
+  beforeEach: enableRowLinks,
+  args: {
+    title: 'Row Links (opted out)',
+    data: rowLinkData,
+    actions: [viewUserAction],
+    simpleColumns: ['displayName', 'userPrincipalName'],
+    rowLink: false,
+  },
+  play: async ({ canvasElement, step }) => {
+    const canvas = within(canvasElement)
+    await step('no cell links when rowLink is false', async () => {
+      await waitFor(() => {
+        expect(canvasElement.textContent).toContain('Alice Smith')
+      })
+      await expect(canvas.queryByRole('link', { name: 'Alice Smith' })).toBeNull()
+    })
+  },
+}
+
+// External portal deep links are excluded by testing the link, not the label,
+// so "View in CIPP" still works while "View in Entra" is skipped.
+export const RowLinkIgnoresExternalActions = {
+  beforeEach: enableRowLinks,
+  args: {
+    title: 'Row Links (external action)',
+    data: rowLinkData,
+    actions: [
+      {
+        label: 'View in Entra',
+        link: 'https://entra.microsoft.com/#view/x/[id]',
+        external: true,
+      },
+    ],
+    simpleColumns: ['displayName', 'userPrincipalName'],
+  },
+  play: async ({ canvasElement, step }) => {
+    const canvas = within(canvasElement)
+    await step('an external-only table links nothing', async () => {
+      await waitFor(() => {
+        expect(canvasElement.textContent).toContain('Alice Smith')
+      })
+      await expect(canvas.queryByRole('link', { name: 'Alice Smith' })).toBeNull()
+    })
+  },
+}
+
+// Intune devices cannot be seeded in local dev (managedDevices comes from live
+// Graph and needs a real enrolled device), so this story stands in for that
+// page by using its actual production action array. It proves deviceName is
+// picked as the primary column and links into CIPP rather than to the Intune
+// deep link that sits directly after it.
+export const RowLinkUsesRealIntuneActions = {
+  beforeEach: enableRowLinks,
+  args: {
+    title: 'Devices (real action definitions)',
+    data: [
+      { id: 'd-1', deviceName: 'LAPTOP-ALICE', userPrincipalName: 'alice@contoso.com' },
+      { id: 'd-2', deviceName: 'LAPTOP-BOB', userPrincipalName: 'bob@contoso.com' },
+    ],
+    actions: getIntuneDeviceActions({ tenantFilter: 'contoso.com' }),
+    simpleColumns: ['deviceName', 'userPrincipalName'],
+  },
+  play: async ({ canvasElement, step }) => {
+    const canvas = within(canvasElement)
+
+    await step('device name links into CIPP, not Intune', async () => {
+      const link = await canvas.findByRole('link', { name: 'LAPTOP-ALICE' })
+      await expect(link).toHaveAttribute('href', '/endpoint/MEM/devices/device?deviceId=d-1')
+    })
+
+    await step('the external Intune action is never used for the cell', async () => {
+      const hrefs = [...canvasElement.querySelectorAll('tbody a')].map((a) => a.getAttribute('href'))
+      expect(hrefs.every((href) => href.startsWith('/endpoint/MEM/devices/device'))).toBe(true)
+      expect(hrefs.some((href) => href.includes('intune.microsoft.com'))).toBe(false)
+    })
+  },
+}
+
+// The standards templates page lists "View Tenant Report" before "Edit Template".
+// The report is not the row's own record, so the name must link to the template.
+export const RowLinkSkipsTenantReportAction = {
+  beforeEach: enableRowLinks,
+  args: {
+    title: 'Standards Templates (real action order)',
+    data: [
+      { GUID: 't-1', templateName: 'Baseline Alpha', type: 'standard' },
+      { GUID: 't-2', templateName: 'Baseline Beta', type: 'standard' },
+    ],
+    actions: [
+      {
+        label: 'View Tenant Report',
+        link: '/tenant/manage/applied-standards/?templateId=[GUID]',
+        target: '_self',
+      },
+      {
+        label: 'Edit Template',
+        link: '/tenant/standards/templates/template?id=[GUID]&type=[type]',
+        target: '_self',
+      },
+    ],
+    simpleColumns: ['templateName', 'type'],
+  },
+  play: async ({ canvasElement, step }) => {
+    const canvas = within(canvasElement)
+    await step('links to the template, not the applied-standards report', async () => {
+      const link = await canvas.findByRole('link', { name: 'Baseline Alpha' })
+      await expect(link).toHaveAttribute(
+        'href',
+        '/tenant/standards/templates/template?id=t-1&type=standard'
+      )
+    })
+  },
+}
+
+// tableRowLinks is opt-in: with the preference off (the default) a table that
+// would otherwise link renders exactly as it always has.
+export const RowLinkDisabledByPreference = {
+  beforeEach: disableRowLinks,
+  args: {
+    title: 'Row Links (preference off)',
+    data: rowLinkData,
+    actions: [viewUserAction],
+    simpleColumns: ['displayName', 'userPrincipalName'],
+  },
+  play: async ({ canvasElement, step }) => {
+    const canvas = within(canvasElement)
+    await step('nothing links until the preference is enabled', async () => {
+      await waitFor(() => {
+        expect(canvasElement.textContent).toContain('Alice Smith')
+      })
+      await expect(canvas.queryByRole('link', { name: 'Alice Smith' })).toBeNull()
     })
   },
 }

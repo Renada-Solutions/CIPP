@@ -177,3 +177,74 @@ describe('getCippFormatting Members (roles export)', () => {
     expect(cell?.props?.tableTitle).toBe('Members')
   })
 })
+
+// The primary-column link is the last branch in the chain, so these pin both
+// halves of that: it wraps a plain value, and it never displaces a formatter
+// that already had an opinion about the cell.
+describe('getCippFormatting (primary column link)', () => {
+  const rowContext = (resolveRowLink) => ({ row: { id: 'abc-123' }, resolveRowLink })
+  const linkTo = (href) => vi.fn(() => href)
+
+  it('wraps a plain value in a link when the row resolves one', () => {
+    const element = getCippFormatting(
+      'Jane Doe',
+      'displayName',
+      undefined,
+      undefined,
+      true,
+      rowContext(linkTo('/identity/administration/users/user?userId=abc-123'))
+    )
+    expect(element.props.href).toBe('/identity/administration/users/user?userId=abc-123')
+    expect(element.props.children).toBe('Jane Doe')
+  })
+
+  it('renders the unchanged span when no link resolves', () => {
+    const element = getCippFormatting(
+      'Jane Doe',
+      'displayName',
+      undefined,
+      undefined,
+      true,
+      rowContext(vi.fn(() => null))
+    )
+    expect(element.type).toBe('span')
+    expect(element.props.children).toBe('Jane Doe')
+  })
+
+  // Sorting, global search, CSV and PDF all call through text mode. A row
+  // context must never leak markup into any of them.
+  it('returns the bare string in text mode even with a row context', () => {
+    const resolveRowLink = linkTo('/x')
+    expect(
+      getCippFormatting('Jane Doe', 'displayName', 'text', undefined, true, rowContext(resolveRowLink))
+    ).toBe('Jane Doe')
+    expect(resolveRowLink).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['a tenant chip', 'contoso.com', 'Tenant'],
+    ['a boolean icon', true, 'displayName'],
+    ['an external URL link', 'https://contoso.com/x', 'displayName'],
+    ['a chip list', ['one', 'two'], 'displayName'],
+    ['an items button', { nested: 'object' }, 'displayName'],
+    ['a relative date', '2024-01-15T10:30:00Z', 'createdDateTime'],
+  ])('leaves %s alone', (_label, value, cellName) => {
+    const resolveRowLink = linkTo('/x')
+    getCippFormatting(value, cellName, undefined, undefined, true, rowContext(resolveRowLink))
+    expect(resolveRowLink).not.toHaveBeenCalled()
+  })
+
+  it('never links a null or undefined cell', () => {
+    const resolveRowLink = linkTo('/x')
+    getCippFormatting(null, 'displayName', undefined, undefined, true, rowContext(resolveRowLink))
+    getCippFormatting(
+      undefined,
+      'displayName',
+      undefined,
+      undefined,
+      true,
+      rowContext(resolveRowLink)
+    )
+    expect(resolveRowLink).not.toHaveBeenCalled()
+  })
+})

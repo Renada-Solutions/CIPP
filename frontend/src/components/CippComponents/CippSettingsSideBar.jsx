@@ -66,6 +66,7 @@ export const CippSettingsSideBar = (props) => {
 
       // Table Filter Preferences
       persistFilters: formValues.persistFilters,
+      tableRowLinks: formValues.tableRowLinks,
 
       // Navigation Settings
       bookmarkSidebar: formValues.bookmarkSidebar,

@@ -102,6 +102,14 @@ Ticking the checkboxes at the left of one or more rows shows a count of the sele
 
 The selection checkbox column is pinned to the left and the actions column to the right, so both stay visible as you scroll horizontally. The column headers remain fixed as you scroll vertically.
 
+### Opening a Record Directly
+
+Where a table's rows have a page of their own in CIPP, the name identifying each row can be shown as a link. Clicking it opens that record straight away, without going through the actions menu first: on the Users table, for example, clicking a user's display name opens their user page. The link goes to the same place as the **View** action in the row's menu, and because it is an ordinary link you can also middle-click or right-click it to open the record in a new tab.
+
+Only one column per table is linked, and only where the destination exists — rows whose record cannot be identified are shown as plain text. When you are viewing All Tenants, the link carries the row's tenant with it so the record opens correctly scoped.
+
+This is off until you switch it on with **Link primary column to record page** on the [Preferences](menu-bar/user-settings.md) page.
+
 ## Column Options
 
 Clicking the menu icon in a column header opens the options for that column.

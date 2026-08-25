@@ -351,6 +351,16 @@ const Page = () => {
                             />
                           ),
                         },
+                        {
+                          label: "Link primary column to record page",
+                          value: (
+                            <CippFormComponent
+                              type="switch"
+                              name="tableRowLinks"
+                              formControl={formcontrol}
+                            />
+                          ),
+                        },
                       ]}
                     />
                     <CippPropertyListCard
