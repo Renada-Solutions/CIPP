@@ -344,6 +344,10 @@ function Send-CIPPAlert {
         Write-Information 'Trying to send to PSA'
         if (-not $config.sendtoIntegration) {
             Write-Information 'PSA delivery skipped: sendtoIntegration is disabled in CippNotifications config. Enable it under Settings -> Notifications to route alerts to your PSA.'
+            # Write-Information never reaches the logbook, so ticking PSA on an alert or a scheduled
+            # task and then getting nothing at all was impossible to diagnose from the CIPP UI - the
+            # setting that suppresses it lives on a different page to the tick that requested it.
+            Write-LogMessage -API 'Webhook Alerts' -tenant $TenantFilter -message "PSA alert '$Title' was not sent: 'Send to integration' is disabled under Settings -> Notifications." -sev Warning
             return
         }
         if ($PSCmdlet.ShouldProcess('PSA', 'Sending alert')) {

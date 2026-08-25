@@ -9,6 +9,10 @@ function New-CippExtAlert {
     $Configuration = (Get-CIPPAzDataTableEntity @Table).config | ConvertFrom-Json -Depth 10 -ErrorAction SilentlyContinue
     $MappingTable = Get-CIPPTable -TableName CippMapping
 
+    # Tracks whether any configured integration actually took the alert. Without it, an install
+    # with no PSA extension enabled swallows every PSA alert in silence.
+    $Delivered = $false
+
     foreach ($ConfigItem in $Configuration.psobject.properties.name) {
         switch ($ConfigItem) {
             'HaloPSA' {
@@ -18,7 +22,13 @@ function New-CippExtAlert {
                     Write-Host "TenantId: $TenantId"
                     $MappedId = ($MappingFile | Where-Object { $_.RowKey -eq $TenantId }).IntegrationId
                     Write-Host "MappedId: $MappedId"
-                    if (!$mappedId) { $MappedId = 1 }
+                    if (!$mappedId) {
+                        # Falling back to client 1 keeps the alert from being lost, but it also means
+                        # the ticket lands on whichever client happens to be first in HaloPSA rather
+                        # than the customer, which is easy to read as "PSA did nothing".
+                        $MappedId = 1
+                        Write-LogMessage -API 'HaloPSATicket' -tenant $Alert.TenantId -message "No HaloPSA client mapping for tenant $($Alert.TenantId) - the ticket will be raised against client 1. Map the tenant under Settings -> Integrations -> HaloPSA." -sev Warning
+                    }
                     Write-Host "MappedId: $MappedId"
 
                     $TicketParams = @{
@@ -51,14 +61,19 @@ function New-CippExtAlert {
                     }
 
                     New-HaloPSATicket @TicketParams
+                    $Delivered = $true
                 }
             }
             'Gradient' {
                 if ($Configuration.Gradient.enabled) {
                     New-GradientAlert -Title $Alert.AlertTitle -Description $Alert.AlertText -Client $Alert.TenantId
+                    $Delivered = $true
                 }
             }
         }
     }
 
+    if (-not $Delivered) {
+        Write-LogMessage -API 'Webhook Alerts' -tenant $Alert.TenantId -message "PSA alert '$($Alert.AlertTitle)' was not delivered: no PSA integration is enabled under Settings -> Integrations." -sev Warning
+    }
 }
