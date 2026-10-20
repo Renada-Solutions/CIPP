@@ -6832,6 +6832,33 @@
     ]
   },
   {
+    "name": "standards.AIAccessPolicy",
+    "label": "AI Access Policy",
+    "cat": "Templates",
+    "disabledFeatures": { "report": false, "warn": false, "remediate": false },
+    "impact": "High Impact",
+    "impactColour": "danger",
+    "addedDate": "2026-10-20",
+    "helpText": "Applies AI Access Policy templates: Copilot licences by group, blocking user consent to apps, and restricting approved enterprise AI apps to their groups. Select every policy that applies to the tenant, including the baseline; the stricter setting wins.",
+    "docsDescription": "Applies one or more AI Access Policy templates to the tenant. Where policies overlap, the stricter setting wins. Copilot licences are assigned to or removed from groups through group-based licensing, user consent to apps is blocked (the CIPP consent policy from the OauthConsent standard counts as compliant), and approved enterprise AI apps such as ChatGPT Enterprise or Claude Enterprise are assigned to the policy groups before assignment is required. Controls with no API are reported from the AI Access checklist and are never changed automatically. Use the AI Access Policy preview to see every change before enabling remediation.",
+    "executiveText": "Applies the organisation's rules for who can use which AI: who receives Copilot licences, whether staff can connect AI apps to company data themselves, and which approved enterprise AI apps each team can sign in to. Every change can be previewed first, and controls that must be set by hand are tracked with who confirmed them and when.",
+    "addedComponent": [
+      {
+        "type": "autoComplete",
+        "multiple": true,
+        "creatable": false,
+        "name": "aiAccessPolicyTemplate",
+        "label": "Select AI Access Policies",
+        "api": {
+          "url": "/api/ListAIAccessPolicyTemplates",
+          "labelField": "name",
+          "valueField": "GUID",
+          "queryKey": "ListAIAccessPolicyTemplates"
+        }
+      }
+    ]
+  },
+  {
     "name": "standards.RetentionCompliancePolicyTemplate",
     "label": "Retention Compliance Policy Template",
     "multi": true,

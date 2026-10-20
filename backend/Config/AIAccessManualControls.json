@@ -1,0 +1,66 @@
+[
+  {
+    "id": "ModelProviders",
+    "title": "Restrict AI model providers (Anthropic, xAI) to approved users or groups",
+    "area": "Microsoft 365 Copilot",
+    "where": "Microsoft 365 admin center > Copilot > Settings > AI providers",
+    "link": "https://admin.microsoft.com",
+    "reason": "No API is documented; scoping is set in the admin center and needs a Global Administrator."
+  },
+  {
+    "id": "AgentCreation",
+    "title": "Limit who can create and share agents",
+    "area": "Agents",
+    "where": "Microsoft 365 admin center > Agents > Settings, and Power Platform admin center > Settings > Copilot Studio authors",
+    "link": "https://admin.microsoft.com",
+    "reason": "No API is documented for agent sharing and creation settings."
+  },
+  {
+    "id": "AgentTools",
+    "title": "Review the agent tools and MCP server registry",
+    "area": "Agents",
+    "where": "Microsoft 365 admin center > Agents > Tools",
+    "link": "https://admin.microsoft.com",
+    "reason": "No API is documented for the tools registry."
+  },
+  {
+    "id": "CopilotGroupSettings",
+    "title": "Apply Copilot Chat capability settings per group",
+    "area": "Microsoft 365 Copilot",
+    "where": "Cloud Policy service (config.office.com)",
+    "link": "https://config.office.com",
+    "reason": "The Copilot policy settings API only sets tenant-wide values."
+  },
+  {
+    "id": "ResponsibleAI",
+    "title": "Set responsible AI protections per group",
+    "area": "Microsoft 365 Copilot",
+    "where": "Cloud Policy service (config.office.com)",
+    "link": "https://config.office.com",
+    "reason": "No API is documented."
+  },
+  {
+    "id": "CopilotFileUpload",
+    "title": "Decide on Copilot file upload",
+    "area": "Microsoft 365 Copilot",
+    "where": "Microsoft Support request",
+    "link": "https://admin.microsoft.com",
+    "reason": "File upload can only be changed through a Microsoft Support request."
+  },
+  {
+    "id": "VendorWorkspaceRestriction",
+    "title": "Restrict users to the company ChatGPT or Claude workspace",
+    "area": "Third-party AI",
+    "where": "Microsoft Entra admin center > Global Secure Access > custom headers",
+    "link": "https://entra.microsoft.com",
+    "reason": "Custom headers are in preview with no documented API, and need TLS inspection."
+  },
+  {
+    "id": "VendorRoles",
+    "title": "Define roles for models and features in ChatGPT and Claude",
+    "area": "Third-party AI",
+    "where": "ChatGPT Enterprise Admin Console > Permissions & roles; Claude organization settings",
+    "link": "https://claude.ai/admin-settings",
+    "reason": "Roles are defined only in each vendor's console; membership can then follow groups."
+  }
+]
