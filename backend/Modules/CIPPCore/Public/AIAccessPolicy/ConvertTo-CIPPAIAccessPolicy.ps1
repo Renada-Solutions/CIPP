@@ -84,10 +84,15 @@ function ConvertTo-CIPPAIAccessPolicy {
     }
     if ($UserConsent -notin @('notManaged', 'block')) { throw "Unknown user consent setting '$UserConsent'." }
 
-    # Approved AI apps: {appId, displayName}, {value, label}, "appId" or "appId|Display name"
+    # Approved AI apps: {appId, displayName}, {value, label}, "appId", "appId|Display name", or the form's
+    # multiline text with one "appId, Display name" per line
+    $AppInput = $InputObject.approvedAiApps
+    if ($AppInput -is [string]) {
+        $AppInput = @($AppInput -split '\r?\n' | ForEach-Object { $_.Trim() } | Where-Object { $_ } | ForEach-Object { $_ -replace '^([^,|]+?)\s*,\s*', '$1|' })
+    }
     $Apps = [System.Collections.Generic.List[object]]::new()
     $SeenApps = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    foreach ($Item in @($InputObject.approvedAiApps) | Where-Object { $_ }) {
+    foreach ($Item in @($AppInput) | Where-Object { $_ }) {
         $AppId = $null; $DisplayName = $null
         if ($Item -is [string]) {
             $Parts = $Item -split '\|', 2

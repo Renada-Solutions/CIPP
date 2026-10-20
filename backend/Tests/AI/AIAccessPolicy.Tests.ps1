@@ -48,6 +48,12 @@ Describe 'ConvertTo-CIPPAIAccessPolicy' {
         $Policy.manualControls | Should -Be @('ModelProviders')
     }
 
+    It 'reads approved apps from multiline form text' {
+        $Policy = New-Policy @{ approvedAiApps = "11111111-1111-4111-8111-111111111111, ChatGPT Enterprise, EU`r`n`n22222222-2222-4222-8222-222222222222" }
+        $Policy.approvedAiApps.appId | Should -Be @('11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222')
+        $Policy.approvedAiApps.displayName | Should -Be @('ChatGPT Enterprise, EU', $null)
+    }
+
     It 'defaults to the Copilot SKUs when a licence rule names none' {
         (New-Policy @{ copilotLicenceMode = 'deny' }).copilotLicence.skuPartNumbers | Should -Be @('Microsoft_365_Copilot', 'M365_Copilot', 'Microsoft_365_Copilot_EDU')
     }
@@ -147,6 +153,13 @@ Describe 'ConvertTo-CIPPAIAccessPolicyPlan' {
             (ConvertTo-CIPPAIAccessPolicyPlan -Merged $Grant -State $State)[0].status | Should -Be 'Compliant'
             $Deny = Merge-CIPPAIAccessPolicy -Policies @(New-Policy @{ copilotLicenceMode = 'deny'; copilotSkus = @('Microsoft_365_Copilot') })
             (ConvertTo-CIPPAIAccessPolicyPlan -Merged $Deny -State $State)[0].action.type | Should -Be 'RemoveGroupLicense'
+        }
+
+        It 'leaves out unsubscribed SKUs when the tenant has another SKU from the same rule' {
+            $Merged = Merge-CIPPAIAccessPolicy -Policies @(New-Policy @{ copilotLicenceMode = 'grant' })
+            $Rows = ConvertTo-CIPPAIAccessPolicyPlan -Merged $Merged -State (New-State)
+            $Rows.Count | Should -Be 1
+            $Rows[0].item | Should -Be 'Microsoft_365_Copilot'
         }
 
         It 'marks unsubscribed SKUs not applicable and missing or ambiguous groups blocked' {

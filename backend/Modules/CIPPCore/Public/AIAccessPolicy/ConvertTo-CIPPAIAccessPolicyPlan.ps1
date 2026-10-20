@@ -89,10 +89,19 @@ function ConvertTo-CIPPAIAccessPolicyPlan {
     }
 
     # --- Copilot licences per group ---
+    # A rule usually lists several Copilot SKUs; one the tenant doesn't buy is only worth a row when
+    # the tenant has none of the rule's SKUs for that group
+    $SubscribedParts = @($State.subscribedSkus | ForEach-Object { $_.skuPartNumber })
+    $GroupsWithASku = @{}
+    foreach ($Licence in @($Merged.licences)) {
+        if ($SubscribedParts -contains $Licence.skuPartNumber) { $GroupsWithASku[$Licence.groupName.ToLower()] = $true }
+    }
+
     foreach ($Licence in @($Merged.licences)) {
         $Sku = @($State.subscribedSkus | Where-Object { $_.skuPartNumber -eq $Licence.skuPartNumber }) | Select-Object -First 1
         $Expected = if ($Licence.mode -eq 'grant') { 'Assigned to group' } else { 'Not assigned to group' }
         if (-not $Sku) {
+            if ($GroupsWithASku.ContainsKey($Licence.groupName.ToLower())) { continue }
             Add-Row 'CopilotLicence' $Licence.skuPartNumber $Licence.groupName $Expected 'Not subscribed' 'NotApplicable' "The tenant has no $($Licence.skuPartNumber) subscription." $null $Licence.from
             continue
         }

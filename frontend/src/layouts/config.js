@@ -492,6 +492,28 @@ export const nativeMenuItems = [
         ],
       },
       {
+        title: 'AI Access',
+        permissions: ['Tenant.AI.*'],
+        items: [
+          {
+            title: 'Policies',
+            path: '/copilot/ai-access/policies',
+            permissions: ['Tenant.AI.*'],
+            scope: 'global',
+          },
+          {
+            title: 'Preview',
+            path: '/copilot/ai-access/preview',
+            permissions: ['Tenant.AI.*'],
+          },
+          {
+            title: 'Checklist',
+            path: '/copilot/ai-access/checklist',
+            permissions: ['Tenant.AI.*'],
+          },
+        ],
+      },
+      {
         title: 'Shadow AI Discovery',
         path: '/copilot/shadow-ai',
         permissions: ['Tenant.Standards.*'],

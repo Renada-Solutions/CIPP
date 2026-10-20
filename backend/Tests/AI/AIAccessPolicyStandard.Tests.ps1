@@ -4,7 +4,7 @@
 
 BeforeAll {
     $RepoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSCommandPath))
-    foreach ($Name in @('Invoke-CIPPStandardAIAccessPolicy', 'Invoke-ListAIAccessPolicyPreview')) {
+    foreach ($Name in @('Invoke-CIPPStandardAIAccessPolicy', 'Invoke-ListAIAccessPolicyPreview', 'Invoke-ListAIAccessPolicyTemplates')) {
         $Path = Get-ChildItem -Path (Join-Path $RepoRoot 'Modules') -Recurse -Filter "$Name.ps1" -File | Select-Object -First 1 -ExpandProperty FullName
         if (-not $Path) { throw "Could not locate $Name.ps1 under Modules/" }
         . $Path
@@ -20,6 +20,7 @@ BeforeAll {
     function Get-CIPPAIAccessPolicyPlan { param($TenantFilter, $TemplateId) }
     function Invoke-CIPPAIAccessPolicyAction { param($TenantFilter, $Plan, $APIName) }
     function Get-CIPPAIAccessAppliedTemplateId { param($TenantFilter) }
+    function Get-CIPPAIAccessPolicyTemplate { param($Id) }
     function Write-LogMessage { param($headers, $API, $tenant, $message, $sev, $LogData) }
     function Write-StandardsAlert { param($message, $object, $tenant, $standardName, $standardId) }
     function Set-CIPPStandardsCompareField { param($FieldName, $CurrentValue, $ExpectedValue, $TenantFilter) }
@@ -86,5 +87,19 @@ Describe 'Invoke-ListAIAccessPolicyPreview' {
         Should -Invoke Get-CIPPAIAccessPolicyPlan -Times 1 -Exactly -ParameterFilter { ($TemplateId -join ',') -eq 'tpl-1,tpl-2' }
         $Response.Body.source | Should -Be 'selected'
         $Response.Body.plan[0].change | Should -Be 'AssignGroupLicense'
+    }
+}
+
+Describe 'Invoke-ListAIAccessPolicyTemplates' {
+    It 'adds summary columns without overwriting the policy fields the edit form needs' {
+        Mock Get-CIPPAIAccessPolicyTemplate {
+            [pscustomobject]@{ GUID = 't1'; name = 'Finance'; target = [pscustomobject]@{ type = 'group'; groupName = 'Finance users' }; copilotLicence = [pscustomobject]@{ mode = 'grant'; skuPartNumbers = @('Microsoft_365_Copilot') }; userConsent = 'block'; approvedAiApps = @(); manualControls = @('ModelProviders') }
+        }
+        $Body = @((Invoke-ListAIAccessPolicyTemplates -Request ([pscustomobject]@{ Query = @{} })).Body)
+        $Body[0].copilotLicence.mode | Should -Be 'grant'
+        $Body[0].licenceSummary | Should -Be 'Grant'
+        $Body[0].appliesTo | Should -Be 'Finance users'
+        $Body[0].userConsentSet | Should -Be 'Blocked'
+        $Body[0].manualCount | Should -Be 1
     }
 }
