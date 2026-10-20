@@ -140,20 +140,35 @@ function ConvertTo-CIPPAIAccessPolicyPlan {
             continue
         }
 
-        # Prefer an enabled user role (gallery SSO apps usually define one); otherwise the default role
-        $UserRole = @($Sp.appRoles | Where-Object { $_.isEnabled -ne $false -and @($_.allowedMemberTypes) -contains 'User' }) | Select-Object -First 1
-        $AppRoleId = if ($UserRole) { $UserRole.id } else { $DefaultAppRoleId }
+        # The role groups get. Graph does not order appRoles, and apps often define Admin or Owner roles,
+        # so never take the first one: use the default access role when the app has no user roles, a
+        # well-known access role, or the only role that is not an admin role. Anything else is ambiguous.
+        $UserRoles = @($Sp.appRoles | Where-Object { $_.isEnabled -ne $false -and @($_.allowedMemberTypes) -contains 'User' })
+        $AccessRoles = @($UserRoles | Where-Object { $_.value -in @('User', 'msiam_access', 'Member') -or $_.displayName -in @('User', 'Default Access', 'Member') })
+        $NonAdminRoles = @($UserRoles | Where-Object { "$($_.value) $($_.displayName)" -notmatch 'admin|owner|manager|super' })
+        $AppRoleId = if ($UserRoles.Count -eq 0) { $DefaultAppRoleId }
+        elseif ($AccessRoles.Count -eq 1) { $AccessRoles[0].id }
+        elseif ($UserRoles.Count -eq 1 -and $NonAdminRoles.Count -eq 1) { $NonAdminRoles[0].id }
+        else { $null }
         $AssignedTo = @($State.appAssignments[$Sp.id] | ForEach-Object { $_.principalId })
 
-        # Assignment rows come first: the executor also assigns groups before requiring assignment
+        # Assignment rows come first: the executor also assigns groups before requiring assignment.
+        # Assignment is only required once every policy group is, or will be, assigned, so a missing
+        # group or an unclear role can never lock the policy's users out.
+        $AllGroupsCovered = $true
         foreach ($GroupName in @($App.groupNames)) {
             $Resolved = Resolve-Group $GroupName
             if (-not $Resolved.group) {
+                $AllGroupsCovered = $false
                 Add-Row 'ApprovedAiApp' $Name $GroupName 'Group assigned' 'Group missing' 'Blocked' $Resolved.problem $null $App.from
                 continue
             }
             if ($AssignedTo -contains $Resolved.group.id) {
                 Add-Row 'ApprovedAiApp' $Name $GroupName 'Group assigned' 'Group assigned' 'Compliant' 'Members of the group can sign in.' $null $App.from
+            } elseif (-not $AppRoleId) {
+                $AllGroupsCovered = $false
+                $RoleNames = ($UserRoles | ForEach-Object { $_.displayName ?? $_.value }) -join ', '
+                Add-Row 'ApprovedAiApp' $Name $GroupName 'Group assigned' 'Not assigned' 'Blocked' "The app has several roles ($RoleNames) and CIPP cannot tell which one gives normal access. Assign the group in Entra with the right role." $null $App.from
             } else {
                 Add-Row 'ApprovedAiApp' $Name $GroupName 'Group assigned' 'Not assigned' 'NonCompliant' 'Assign the group so its members keep access.' ([pscustomobject]@{ type = 'AssignAppToGroup'; servicePrincipalId = $Sp.id; groupId = $Resolved.group.id; appRoleId = $AppRoleId }) $App.from
             }
@@ -161,6 +176,8 @@ function ConvertTo-CIPPAIAccessPolicyPlan {
 
         if ($Sp.appRoleAssignmentRequired -eq $true) {
             Add-Row 'ApprovedAiApp' $Name 'All users' 'Assignment required' 'Assignment required' 'Compliant' 'Only assigned users and groups can sign in.' $null $App.from
+        } elseif (-not $AllGroupsCovered) {
+            Add-Row 'ApprovedAiApp' $Name 'All users' 'Assignment required' 'Anyone can sign in' 'Blocked' "Assignment is not required until every policy group is assigned; otherwise the policy's users would lose access." $null $App.from
         } else {
             $Others = @($AssignedTo).Count
             Add-Row 'ApprovedAiApp' $Name 'All users' 'Assignment required' 'Anyone can sign in' 'NonCompliant' "Require assignment so only the policy's groups (and $Others existing assignments) can sign in." ([pscustomobject]@{ type = 'RequireAppAssignment'; servicePrincipalId = $Sp.id }) $App.from

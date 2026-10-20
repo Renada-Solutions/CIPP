@@ -4,7 +4,7 @@
 
 BeforeAll {
     $RepoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSCommandPath))
-    foreach ($Name in @('Invoke-CIPPStandardAIAccessPolicy', 'Invoke-ListAIAccessPolicyPreview', 'Invoke-ListAIAccessPolicyTemplates')) {
+    foreach ($Name in @('Invoke-CIPPStandardAIAccessPolicy', 'Invoke-ListAIAccessPolicyPreview', 'Invoke-ListAIAccessPolicyTemplates', 'Get-CIPPAIAccessPolicyTemplate')) {
         $Path = Get-ChildItem -Path (Join-Path $RepoRoot 'Modules') -Recurse -Filter "$Name.ps1" -File | Select-Object -First 1 -ExpandProperty FullName
         if (-not $Path) { throw "Could not locate $Name.ps1 under Modules/" }
         . $Path
@@ -20,7 +20,8 @@ BeforeAll {
     function Get-CIPPAIAccessPolicyPlan { param($TenantFilter, $TemplateId) }
     function Invoke-CIPPAIAccessPolicyAction { param($TenantFilter, $Plan, $APIName) }
     function Get-CIPPAIAccessAppliedTemplateId { param($TenantFilter) }
-    function Get-CIPPAIAccessPolicyTemplate { param($Id) }
+    function Get-CippTable { param($tablename) @{} }
+    function Get-CIPPAzDataTableEntity { param($Filter) }
     function Write-LogMessage { param($headers, $API, $tenant, $message, $sev, $LogData) }
     function Write-StandardsAlert { param($message, $object, $tenant, $standardName, $standardId) }
     function Set-CIPPStandardsCompareField { param($FieldName, $CurrentValue, $ExpectedValue, $TenantFilter) }
@@ -101,5 +102,13 @@ Describe 'Invoke-ListAIAccessPolicyTemplates' {
         $Body[0].appliesTo | Should -Be 'Finance users'
         $Body[0].userConsentSet | Should -Be 'Blocked'
         $Body[0].manualCount | Should -Be 1
+    }
+}
+
+Describe 'Get-CIPPAIAccessPolicyTemplate' {
+    It 'returns nothing, not every template, when no requested id is a GUID' {
+        Mock Get-CIPPAzDataTableEntity { @([pscustomobject]@{ RowKey = 'x'; JSON = '{}' }) }
+        @(Get-CIPPAIAccessPolicyTemplate -Id 'not-a-guid').Count | Should -Be 0
+        Should -Invoke Get-CIPPAzDataTableEntity -Times 0 -Exactly
     }
 }

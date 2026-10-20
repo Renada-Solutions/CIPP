@@ -32,7 +32,11 @@ export const aiAgentSyncConfirmText =
 export const aiAccessLicenceModes = [
   { label: 'Not managed by this policy', value: 'notManaged' },
   { label: 'Grant: assign Copilot to this group', value: 'grant' },
-  { label: 'Deny: remove group-based Copilot from this group', value: 'deny' },
+  {
+    label:
+      'Deny: remove group-based Copilot from this group (other groups can still grant it)',
+    value: 'deny',
+  },
 ]
 
 export const copilotSkuOptions = [

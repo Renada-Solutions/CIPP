@@ -18,7 +18,7 @@ Opens the policy editor.
 | --- | --- |
 | Policy name, Description | How the policy appears in CIPP and in the standard. |
 | Applies to | All users (a baseline), or a group by display name. Licence and approved app rules need a group. |
-| Copilot licence for this group | Not managed; Grant (assign the Copilot SKUs to the group); or Deny (remove group-based Copilot from the group). Licences assigned directly to users are not changed. |
+| Copilot licence for this group | Not managed; Grant (assign the Copilot SKUs to the group); or Deny (remove group-based Copilot from the group). Licences assigned directly to users are not changed. Deny acts only on this group: a user who is also in another group that grants Copilot keeps it. |
 | Copilot SKUs | Which SKUs the rule covers. Leave empty for all Microsoft 365 Copilot SKUs; SKUs a tenant does not subscribe to are skipped. |
 | Block users from consenting to apps themselves | Tenant-wide. Removes user self-consent policies; the CIPP consent policy from the "Require admin consent" standard counts as compliant. |
 | Approved AI apps for this group | One per line: application ID, display name. CIPP assigns the group to each app, then requires assignment. |

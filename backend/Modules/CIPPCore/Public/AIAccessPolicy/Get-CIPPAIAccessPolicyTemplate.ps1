@@ -16,8 +16,10 @@ function Get-CIPPAIAccessPolicyTemplate {
 
     $Table = Get-CippTable -tablename 'templates'
     $Filter = "PartitionKey eq 'AIAccessPolicyTemplate'"
-    $Ids = @($Id | Where-Object { $_ -match '^[0-9a-fA-F-]{36}$' })
-    if ($Ids.Count -gt 0) {
+    if ($PSBoundParameters.ContainsKey('Id')) {
+        # Ids were asked for: never fall back to every template when none of them is a GUID
+        $Ids = @($Id | Where-Object { $_ -match '^[0-9a-fA-F-]{36}$' })
+        if ($Ids.Count -eq 0) { return }
         $Filter += " and (RowKey eq '$($Ids -join "' or RowKey eq '")')"
     }
 

@@ -4,7 +4,7 @@
 
 BeforeAll {
     $RepoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSCommandPath))
-    foreach ($Name in @('ConvertTo-CIPPAIAccessPolicy', 'Merge-CIPPAIAccessPolicy', 'ConvertTo-CIPPAIAccessPolicyPlan', 'Invoke-CIPPAIAccessPolicyAction')) {
+    foreach ($Name in @('ConvertTo-CIPPAIAccessPolicy', 'Merge-CIPPAIAccessPolicy', 'ConvertTo-CIPPAIAccessPolicyPlan', 'Invoke-CIPPAIAccessPolicyAction', 'Get-CIPPAIAccessPolicyPlan')) {
         $Path = Get-ChildItem -Path (Join-Path $RepoRoot 'Modules') -Recurse -Filter "$Name.ps1" -File | Select-Object -First 1 -ExpandProperty FullName
         if (-not $Path) { throw "Could not locate $Name.ps1 under Modules/" }
         . $Path
@@ -203,6 +203,37 @@ Describe 'ConvertTo-CIPPAIAccessPolicyPlan' {
             (ConvertTo-CIPPAIAccessPolicyPlan -Merged $Merged -State $script:AppState)[0].action.appRoleId | Should -Be '00000000-0000-0000-0000-000000000000'
         }
 
+        It 'picks the access role, never the first role, and blocks when the role is unclear' {
+            $Sp = $script:AppState.servicePrincipals[$script:AppId]
+            $Sp.appRoles = @(
+                [pscustomobject]@{ id = 'role-admin'; value = 'Admin'; displayName = 'Admin'; isEnabled = $true; allowedMemberTypes = @('User') }
+                [pscustomobject]@{ id = 'role-access'; value = 'msiam_access'; displayName = 'msiam_access'; isEnabled = $true; allowedMemberTypes = @('User') }
+            )
+            $Merged = Merge-CIPPAIAccessPolicy -Policies @(New-Policy @{ approvedAiApps = @($script:AppId) })
+            (ConvertTo-CIPPAIAccessPolicyPlan -Merged $Merged -State $script:AppState)[0].action.appRoleId | Should -Be 'role-access'
+
+            $Sp.appRoles = @(
+                [pscustomobject]@{ id = 'role-admin'; value = 'Admin'; displayName = 'Admin'; isEnabled = $true; allowedMemberTypes = @('User') }
+                [pscustomobject]@{ id = 'role-editor'; value = 'Editor'; displayName = 'Editor'; isEnabled = $true; allowedMemberTypes = @('User') }
+            )
+            $Rows = ConvertTo-CIPPAIAccessPolicyPlan -Merged $Merged -State $script:AppState
+            $Rows.status | Should -Be @('Blocked', 'Blocked')
+            @($Rows | Where-Object action).Count | Should -Be 0
+
+            $Sp.appRoles = @([pscustomobject]@{ id = 'role-admin'; value = 'Admin'; displayName = 'Admin'; isEnabled = $true; allowedMemberTypes = @('User') })
+            (ConvertTo-CIPPAIAccessPolicyPlan -Merged $Merged -State $script:AppState)[0].status | Should -Be 'Blocked'
+        }
+
+        It 'does not require assignment while a policy group is missing' {
+            $Merged = Merge-CIPPAIAccessPolicy -Policies @(New-Policy @{ approvedAiApps = @($script:AppId) })
+            $State = $script:AppState
+            $State.groups = @{}
+            $Rows = ConvertTo-CIPPAIAccessPolicyPlan -Merged $Merged -State $State
+            $Rows.status | Should -Be @('Blocked', 'Blocked')
+            $Rows[1].expected | Should -Be 'Assignment required'
+            @($Rows | Where-Object action).Count | Should -Be 0
+        }
+
         It 'is compliant once assigned and required, and not applicable when the app is absent' {
             $script:AppState.servicePrincipals[$script:AppId].appRoleAssignmentRequired = $true
             $script:AppState.appAssignments['sp-claude'] = @([pscustomobject]@{ principalId = 'grp-fin' })
@@ -250,6 +281,18 @@ Describe 'Invoke-CIPPAIAccessPolicyAction' {
         $Results.success | Should -Be @($true, $true)
     }
 
+    It 'does not require assignment when assigning the group failed' {
+        function New-GraphPOSTRequest { param($uri, $tenantid, $type, $body) if ($uri -like '*appRoleAssignedTo') { throw 'Group-based assignment requires Entra ID P1' }; $script:Calls.Add("$type $uri") }
+        $Plan = @(
+            [pscustomobject]@{ control = 'ApprovedAiApp'; item = 'Claude'; target = 'All users'; expected = 'Assignment required'; status = 'NonCompliant'; action = [pscustomobject]@{ type = 'RequireAppAssignment'; servicePrincipalId = 'sp' } }
+            [pscustomobject]@{ control = 'ApprovedAiApp'; item = 'Claude'; target = 'Finance users'; expected = 'Group assigned'; status = 'NonCompliant'; action = [pscustomobject]@{ type = 'AssignAppToGroup'; servicePrincipalId = 'sp'; groupId = 'g'; appRoleId = 'r' } }
+        )
+        $Results = @(Invoke-CIPPAIAccessPolicyAction -TenantFilter 'contoso.onmicrosoft.com' -Plan $Plan)
+        $script:Calls.Count | Should -Be 0
+        $Results.success | Should -Be @($false, $false)
+        $Results[1].message | Should -BeLike '*would lose access*'
+    }
+
     It 'continues after a failed change and reports it' {
         function New-GraphPOSTRequest { param($uri, $tenantid, $type, $body) if ($uri -like '*assignLicense') { throw 'Insufficient licences' }; $script:Calls.Add("$type $uri") }
         $Plan = @(
@@ -259,5 +302,30 @@ Describe 'Invoke-CIPPAIAccessPolicyAction' {
         $Results = @(Invoke-CIPPAIAccessPolicyAction -TenantFilter 'contoso.onmicrosoft.com' -Plan $Plan)
         $Results.success | Should -Be @($true, $false)
         $Results[1].message | Should -BeLike '*Insufficient licences*'
+    }
+}
+
+Describe 'Get-CIPPAIAccessPolicyPlan' {
+    BeforeAll {
+        function Get-CIPPAIAccessPolicyTemplate { param($Id) }
+        function Get-CIPPAIAccessPolicyState { param($TenantFilter, $Merged) }
+        function Get-CIPPAIAccessManualControl { @() }
+    }
+
+    It 'reports a selected policy that no longer loads instead of dropping it' {
+        $Kept = '11111111-1111-4111-8111-111111111111'
+        $Gone = '33333333-3333-4333-8333-333333333333'
+        Mock Get-CIPPAIAccessPolicyTemplate { $P = New-Policy @{}; $P | Add-Member -NotePropertyName GUID -NotePropertyValue $Kept -Force; $P }
+        Mock Get-CIPPAIAccessPolicyState { New-State }
+        $Result = Get-CIPPAIAccessPolicyPlan -TenantFilter 'contoso.onmicrosoft.com' -TemplateId @($Kept, $Gone)
+        $Result.Plan[0].status | Should -Be 'Blocked'
+        $Result.Plan[0].item | Should -BeLike "*$Gone"
+    }
+
+    It 'reports, rather than throws, when every selected policy is gone' {
+        Mock Get-CIPPAIAccessPolicyTemplate { }
+        $Result = Get-CIPPAIAccessPolicyPlan -TenantFilter 'contoso.onmicrosoft.com' -TemplateId @('33333333-3333-4333-8333-333333333333')
+        @($Result.Plan).Count | Should -Be 1
+        $Result.Plan[0].status | Should -Be 'Blocked'
     }
 }

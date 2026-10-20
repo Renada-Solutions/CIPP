@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 import { Alert, Chip, Container, Stack, Typography } from '@mui/material'
 import { Grid } from '@mui/system'
@@ -24,6 +24,7 @@ const Page = () => {
   const singleTenant = currentTenant && currentTenant !== 'AllTenants'
   const formControl = useForm({ defaultValues: { templates: [] } })
   const [templateIds, setTemplateIds] = useState('')
+  const preselected = useRef(false)
 
   const templates = ApiGetCall({
     url: '/api/ListAIAccessPolicyTemplates',
@@ -31,8 +32,10 @@ const Page = () => {
   })
   const templateList = Array.isArray(templates.data) ? templates.data : []
 
-  // Preselect templates passed in the URL (from the policy list's Preview action)
+  // Preselect templates passed in the URL (from the policy list's Preview action), once, so a
+  // background refetch never overwrites the user's own selection
   useEffect(() => {
+    if (preselected.current) return
     const requested = String(router.query.templateIds ?? '')
       .split(',')
       .filter(Boolean)
@@ -41,6 +44,7 @@ const Page = () => {
       templates.isSuccess &&
       Array.isArray(templates.data)
     ) {
+      preselected.current = true
       formControl.setValue(
         'templates',
         templates.data

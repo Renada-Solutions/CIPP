@@ -38,7 +38,7 @@ function Invoke-ListAIAccessChecklist {
         $Now = [datetime]::UtcNow
         $Body = foreach ($Control in @(Get-CIPPAIAccessManualControl)) {
             $Confirmation = $Confirmations[$Control.id]
-            $ConfirmedAt = if ($Confirmation.ConfirmedAt) { ([datetime]$Confirmation.ConfirmedAt).ToUniversalTime() }
+            $ConfirmedAt = if ($Confirmation.ConfirmedAt) { try { ([datetime]$Confirmation.ConfirmedAt).ToUniversalTime() } catch { $null } }
             $Status = if (-not $ConfirmedAt) { 'Not confirmed' } elseif ($ConfirmedAt.AddDays($ReviewDays) -lt $Now) { 'Review due' } else { 'Confirmed' }
             [pscustomobject]@{
                 id          = $Control.id

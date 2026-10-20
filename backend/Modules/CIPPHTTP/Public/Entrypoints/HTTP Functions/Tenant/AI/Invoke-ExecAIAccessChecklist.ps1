@@ -13,7 +13,8 @@ function Invoke-ExecAIAccessChecklist {
 
     $APIName = $Request.Params.CIPPEndpoint
     $Headers = $Request.Headers
-    $TenantFilter = $Request.Body.tenantFilter ?? $Request.Query.tenantFilter
+    # Query first, as Test-CIPPAccess checks it first
+    $TenantFilter = $Request.Query.tenantFilter ?? $Request.Body.tenantFilter
     $Action = $Request.Body.Action ?? 'Confirm'
     $Ids = @(@($Request.Body.id ?? $Request.Body.ids) | ForEach-Object { if ($_.value) { $_.value } else { $_ } } | Where-Object { $_ })
 
