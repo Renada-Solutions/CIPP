@@ -59,7 +59,7 @@ function Invoke-ListAIWorkforceSummary {
                     noSponsor       = @($Agents | Where-Object sponsorStatus -EQ 'None').Count
                     writeAccess     = @($Agents | Where-Object accessLevel -EQ 'Read and write').Count
                     agent365Synced  = [bool]$PackagesStatus.collected
-                    lastRefresh     = if ($Refreshed.Count -gt 0) { $Refreshed | Sort-Object | Select-Object -First 1 } else { $null }
+                    lastRefresh     = if ($Refreshed.Count -gt 0) { $Refreshed | Sort-Object -Descending | Select-Object -First 1 } else { $null }
                 })
         }
 

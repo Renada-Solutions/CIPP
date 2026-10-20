@@ -117,8 +117,13 @@ const AgentDetail = ({ row }) => {
             <Typography variant="body2">None</Typography>
           ) : (
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-              {row.sponsors.map((name) => (
-                <Chip key={name} size="small" variant="outlined" label={name} />
+              {row.sponsors.map((name, index) => (
+                <Chip
+                  key={`${name}-${index}`}
+                  size="small"
+                  variant="outlined"
+                  label={name}
+                />
               ))}
             </Stack>
           )}
@@ -135,8 +140,13 @@ const AgentDetail = ({ row }) => {
             <Typography variant="body2">None</Typography>
           ) : (
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-              {row.owners.map((name) => (
-                <Chip key={name} size="small" variant="outlined" label={name} />
+              {row.owners.map((name, index) => (
+                <Chip
+                  key={`${name}-${index}`}
+                  size="small"
+                  variant="outlined"
+                  label={name}
+                />
               ))}
             </Stack>
           )}

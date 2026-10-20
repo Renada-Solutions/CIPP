@@ -43,12 +43,22 @@ function Get-CIPPAIAgentInventory {
         }
     }
 
+    # Only read a type that holds rows: an empty refresh resets the count to 0 but does not remove
+    # the previous rows, so a stale agent or risk would otherwise linger after it is gone
+    $HasRows = { param($Type) $Counts.ContainsKey($Type) -and [int]$Counts[$Type].DataCount -gt 0 }
+
     $Data = @{}
-    foreach ($Type in @('AgentIdentities', 'AgentIdentityBlueprints', 'AgentPackages', 'RiskyAgents', 'AppRoleAssignments', 'OAuth2PermissionGrants')) {
-        $Data[$Type] = if ($Counts.ContainsKey($Type)) { @(New-CIPPDbRequest -TenantFilter $TenantFilter -Type $Type) } else { @() }
+    foreach ($Type in @('AgentIdentities', 'AgentIdentityBlueprints', 'AgentPackages', 'RiskyAgents')) {
+        $Data[$Type] = if (& $HasRows $Type) { @(New-CIPPDbRequest -TenantFilter $TenantFilter -Type $Type) } else { @() }
     }
-    # Only the fields needed to name permissions; service principals are the largest cached type
-    $Data['ServicePrincipals'] = if ($Counts.ContainsKey('ServicePrincipals') -and ($Data['AppRoleAssignments'].Count -gt 0 -or $Data['OAuth2PermissionGrants'].Count -gt 0)) {
+
+    # Permissions are only resolved for agent identities, and these are among the largest cached
+    # types, so skip them for tenants without agents (most tenants in an AllTenants view)
+    foreach ($Type in @('AppRoleAssignments', 'OAuth2PermissionGrants')) {
+        $Data[$Type] = if ($Data['AgentIdentities'].Count -gt 0 -and (& $HasRows $Type)) { @(New-CIPPDbRequest -TenantFilter $TenantFilter -Type $Type) } else { @() }
+    }
+    # Only the fields needed to name permissions
+    $Data['ServicePrincipals'] = if (($Data['AppRoleAssignments'].Count -gt 0 -or $Data['OAuth2PermissionGrants'].Count -gt 0) -and (& $HasRows 'ServicePrincipals')) {
         @(New-CIPPDbRequest -TenantFilter $TenantFilter -Type 'ServicePrincipals' -Fields @('id', 'displayName', 'appRoles'))
     } else { @() }
 
