@@ -630,6 +630,34 @@
         {
           "id": "3bc15058-7858-4141-b24f-ae43b4e80b52",
           "type": "Scope"
+        },
+        {
+          "id": "b2b8f011-2898-4234-9092-5059f6c1ebfa",
+          "type": "Role"
+        },
+        {
+          "id": "5e850691-d86a-4b24-bfa6-8a52fb37a0c1",
+          "type": "Scope"
+        },
+        {
+          "id": "dcf7150a-88d4-4fe6-9be1-c2744c455397",
+          "type": "Role"
+        },
+        {
+          "id": "7547a7d1-36fa-4479-9c31-559a600eaa4f",
+          "type": "Role"
+        },
+        {
+          "id": "26512dc8-1364-4e9f-867c-6d8b22a9e162",
+          "type": "Scope"
+        },
+        {
+          "id": "a2dcfcb9-cbe8-4d42-812d-952e55cf7f3f",
+          "type": "Scope"
+        },
+        {
+          "id": "4aadfb66-d49a-414a-a883-d8c240b6fa33",
+          "type": "Role"
         }
       ]
     },

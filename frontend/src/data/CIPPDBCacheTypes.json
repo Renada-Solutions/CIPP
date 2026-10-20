@@ -353,5 +353,25 @@
     "type": "IntuneAppInstallStatus",
     "friendlyName": "Intune App Install Status",
     "description": "Per-application install status rollup (failed/installed/pending device counts) from the AppInstallStatusAggregate report"
+  },
+  {
+    "type": "AgentIdentities",
+    "friendlyName": "Agent Identities",
+    "description": "Microsoft Entra Agent ID agent identities with owners and sponsors"
+  },
+  {
+    "type": "AgentIdentityBlueprints",
+    "friendlyName": "Agent Identity Blueprints",
+    "description": "Microsoft Entra Agent ID blueprints registered in the tenant, with credential expiry"
+  },
+  {
+    "type": "AgentPackages",
+    "friendlyName": "Agent 365 Packages",
+    "description": "Microsoft Agent 365 / Copilot catalog packages (requires an Agent 365 license)"
+  },
+  {
+    "type": "RiskyAgents",
+    "friendlyName": "Risky Agents",
+    "description": "Risky agents from Identity Protection (preview)"
   }
 ]

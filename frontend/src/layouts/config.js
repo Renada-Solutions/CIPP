@@ -473,8 +473,24 @@ export const nativeMenuItems = [
         <SparklesIcon />
       </SvgIcon>
     ),
-    permissions: ['Tenant.Standards.*'],
+    permissions: ['Tenant.Standards.*', 'Tenant.AI.*'],
     items: [
+      {
+        title: 'AI Workforce',
+        permissions: ['Tenant.AI.*'],
+        items: [
+          {
+            title: 'Overview',
+            path: '/copilot/workforce',
+            permissions: ['Tenant.AI.*'],
+          },
+          {
+            title: 'Agents',
+            path: '/copilot/agents',
+            permissions: ['Tenant.AI.*'],
+          },
+        ],
+      },
       {
         title: 'Shadow AI Discovery',
         path: '/copilot/shadow-ai',

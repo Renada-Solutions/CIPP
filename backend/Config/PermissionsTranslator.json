@@ -5407,5 +5407,67 @@
     "userConsentDescription": "Allows the app to read and write Copilot policy settings for the organization, without a signed-in user.",
     "userConsentDisplayName": "Read and write Copilot policy settings",
     "value": "CopilotPolicySettings.ReadWrite"
+  },
+  {
+    "description": "Allows the app to read all agent identities without a signed-in user.",
+    "displayName": "Read all agent identities",
+    "id": "b2b8f011-2898-4234-9092-5059f6c1ebfa",
+    "origin": "Application",
+    "value": "AgentIdentity.Read.All"
+  },
+  {
+    "description": "Allows the client to read all agent identities on behalf of the signed-in user.",
+    "displayName": "Read all agent identities",
+    "id": "5e850691-d86a-4b24-bfa6-8a52fb37a0c1",
+    "Origin": "Delegated",
+    "userConsentDescription": "Allows the client to read all agent identities on behalf of the signed-in user.",
+    "userConsentDisplayName": "Read all agent identities",
+    "value": "AgentIdentity.Read.All"
+  },
+  {
+    "description": "Allows the client to read, update, create, and delete agent identities without a signed-in user.",
+    "displayName": "Read and write all agent identities",
+    "id": "dcf7150a-88d4-4fe6-9be1-c2744c455397",
+    "origin": "Application",
+    "value": "AgentIdentity.ReadWrite.All"
+  },
+  {
+    "description": "Allows the client to read all agent identity blueprints without a signed-in user.",
+    "displayName": "Read all agent identity blueprints",
+    "id": "7547a7d1-36fa-4479-9c31-559a600eaa4f",
+    "origin": "Application",
+    "value": "AgentIdentityBlueprint.Read.All"
+  },
+  {
+    "description": "Allows the client to read all agent identity blueprints on behalf of the signed-in user.",
+    "displayName": "Read all agent identity blueprints",
+    "id": "26512dc8-1364-4e9f-867c-6d8b22a9e162",
+    "Origin": "Delegated",
+    "userConsentDescription": "Allows the client to read all agent identity blueprints on behalf of the signed-in user.",
+    "userConsentDisplayName": "Read all agent identity blueprints",
+    "value": "AgentIdentityBlueprint.Read.All"
+  },
+  {
+    "description": "Allows the app to read packages information without a signed-in user.",
+    "displayName": "Read all packages information",
+    "id": "72f0655d-6228-4ddc-8e1b-164973b9213b",
+    "origin": "Application",
+    "value": "CopilotPackages.Read.All"
+  },
+  {
+    "description": "Allows the user to read the packages information",
+    "displayName": "Read all packages information",
+    "id": "a2dcfcb9-cbe8-4d42-812d-952e55cf7f3f",
+    "Origin": "Delegated",
+    "userConsentDescription": "Allows the user to read the packages information",
+    "userConsentDisplayName": "Read all packages information",
+    "value": "CopilotPackages.Read.All"
+  },
+  {
+    "description": "Allows the app to read the risky agents information in your organization without a signed-in user.",
+    "displayName": "Read all risky agents information",
+    "id": "4aadfb66-d49a-414a-a883-d8c240b6fa33",
+    "origin": "Application",
+    "value": "IdentityRiskyAgent.Read.All"
   }
 ]

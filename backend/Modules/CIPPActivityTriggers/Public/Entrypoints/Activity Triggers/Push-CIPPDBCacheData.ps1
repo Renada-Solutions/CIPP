@@ -103,6 +103,15 @@ function Push-CIPPDBCacheData {
                 QueueName      = "DB Cache CopilotUsage - $TenantFilter"
             })
 
+        # AIAgents always runs: Agent ID is free, and licensed sources (Agent 365, Identity Protection) are skipped when unavailable
+        $Tasks.Add(@{
+                FunctionName   = 'ExecCIPPDBCache'
+                CollectionType = 'AIAgents'
+                TenantFilter   = $TenantFilter
+                QueueId        = $QueueId
+                QueueName      = "DB Cache AIAgents - $TenantFilter"
+            })
+
         # Graph collection always runs (no special license needed) — 25 cache types in one activity
         $Tasks.Add(@{
                 FunctionName   = 'ExecCIPPDBCache'

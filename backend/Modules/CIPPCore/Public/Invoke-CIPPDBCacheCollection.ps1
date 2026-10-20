@@ -16,6 +16,7 @@ function Invoke-CIPPDBCacheCollection {
         - IdentityProtection: Risky users/SPs, risk detections, PIM
         - Intune:             Managed devices, policies, app protection
         - Defender:           Defender Vulnerabilities
+        - AIAgents:           Entra Agent ID identities and blueprints, Agent 365 packages, risky agents
 
     .PARAMETER CollectionType
         The group of cache functions to execute
@@ -32,7 +33,7 @@ function Invoke-CIPPDBCacheCollection {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
-        [ValidateSet('Graph', 'ExchangeConfig', 'ExchangeData', 'ConditionalAccess', 'IdentityProtection', 'Intune', 'Compliance', 'CopilotUsage', 'SharePoint', 'Teams', 'Defender')]
+        [ValidateSet('Graph', 'ExchangeConfig', 'ExchangeData', 'ConditionalAccess', 'IdentityProtection', 'Intune', 'Compliance', 'CopilotUsage', 'AIAgents', 'SharePoint', 'Teams', 'Defender')]
         [string]$CollectionType,
 
         [Parameter(Mandatory = $true)]
@@ -137,6 +138,12 @@ function Invoke-CIPPDBCacheCollection {
             'CopilotUserCountSummary'
             'CopilotUserCountTrend'
             'CopilotReadinessActivity'
+        )
+        AIAgents           = @(
+            'AgentIdentities'
+            'AgentIdentityBlueprints'
+            'AgentPackages'
+            'RiskyAgents'
         )
         SharePoint         = @(
             'SPOTenant'
